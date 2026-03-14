@@ -1,4 +1,4 @@
 NUGET
   remote: https://api.nuget.org/v3/index.json
-    elmish (4.1)
-    FSharp.Core (8.0.200)
+    elmish (5.0.2)
+    FSharp.Core (10.0.103)
