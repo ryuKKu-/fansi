@@ -1,0 +1,41 @@
+namespace Fansi
+
+open Elmish
+open Fansi.Core
+
+[<RequireQualifiedAccess>]
+module CheckboxComponent =
+
+    type Message =
+        | Toggle
+
+    type Model =
+        { Checked: bool
+          Label: string
+          Focused: bool
+          CheckedChar: string
+          UncheckedChar: string
+          CheckedStyle: Style
+          UncheckedStyle: Style }
+
+    let init label =
+        { Checked = false
+          Label = label
+          Focused = false
+          CheckedChar = "☑"
+          UncheckedChar = "☐"
+          CheckedStyle = { Style.Default with FgColor = Color.Green; Bold = true }
+          UncheckedStyle = Style.Default },
+        Cmd.none
+
+    let update msg model =
+        match msg with
+        | Toggle -> { model with Checked = not model.Checked }, Cmd.none
+
+    let view model : Node =
+        let checkMark = if model.Checked then model.CheckedChar else model.UncheckedChar
+        let style = if model.Checked then model.CheckedStyle else model.UncheckedStyle
+        Node.row [
+            Node.styledText style $"{checkMark} "
+            Node.styledText style model.Label
+        ]

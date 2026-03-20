@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/Build/">
+    <File Path="paket.dependencies" />
+    <File Path="paket.lock" />
+    <File Path=".config/dotnet-tools.json" />
+    <File Path="global.json" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Fansi/Fansi.fsproj" />
+  </Folder>
+</Solution>

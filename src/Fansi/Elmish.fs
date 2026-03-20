@@ -1,4 +1,4 @@
-﻿module internal Fansi.Elmish
+﻿module Fansi.Elmish
 
 open Elmish
 
@@ -61,7 +61,7 @@ module internal Program' =
         let onError = Program.onError program
         let mutable subscribe = fun _ -> []
         let mutable termination = (fun _ -> false), ignore
-        
+
         program
         |> Program.mapSubscription (fun f -> subscribe <- f; f)
         |> Program.mapTermination (fun f -> termination <- f; f)
@@ -105,16 +105,21 @@ module internal Program' =
             cmd |> Cmd.exec (fun ex -> onError ("Error intitializing:", ex)) dispatch
             activeSubs <- Subs.diff activeSubs sub |> Subs.Fx.change onError dispatch
             processMsgs ()
-            reentered <- false 
+            reentered <- false
 
 module internal Sub =
     open System
     open System.Timers
-    
-    let timer intervalMs msg =
+
+    let timer (intervalMs: float) msg =
         let start dispatch =
             let timer = new Timer(TimeSpan.FromMilliseconds(intervalMs))
             timer.Elapsed.Add (fun _ -> dispatch msg)
             timer.Start()
             { new IDisposable with member _.Dispose() = timer.Stop(); timer.Dispose() }
         start
+
+[<RequireQualifiedAccess>]
+module Cmd =
+    let mapAppMsg (f: 'a -> 'msg) (cmd: Cmd<'a>): Cmd<FansiMsg<_>> =
+        Cmd.map (FansiMsg.App << f) cmd
