@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="GeometryTests.fs" />
+    <Compile Include="StyleTests.fs" />
+    <Compile Include="PropsTests.fs" />
+    <Compile Include="SolverTests.fs" />
+    <Compile Include="UiTests.fs" />
+    <Compile Include="LayoutTests.fs" />
+    <Compile Include="BufferTests.fs" />
+    <Compile Include="PaintTests.fs" />
+    <Compile Include="RendererTests.fs" />
+    <None Include="paket.references" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fansi\Fansi.fsproj" />
+  </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>

@@ -2,6 +2,7 @@ namespace Fansi
 
 open System
 open Elmish
+open Fansi
 open Fansi.Core
 
 [<RequireQualifiedAccess>]
@@ -15,45 +16,77 @@ module ListComponent =
 
     type Model<'item> =
         { Items: 'item list
-          Selected: int
+          FocusItemIndex: int
+          SelectedItemIndex: int option
           ViewportOffset: int
           ViewportSize: int
           Focused: bool
           ItemToString: 'item -> string
           SelectedStyle: Style
           NormalStyle: Style
+          FocusedStyle: Style
           FocusedIndicator: string }
 
     let init (items: 'item list) (itemToString: 'item -> string) (viewportSize: int) =
         { Items = items
-          Selected = 0
+          FocusItemIndex = 0
+          SelectedItemIndex = None
           ViewportOffset = 0
           ViewportSize = viewportSize
           Focused = false
           ItemToString = itemToString
-          SelectedStyle = { Style.Default with FgColor = Color.Black; BgColor = Color.Cyan; Bold = true }
+          SelectedStyle =
+            { Style.Default with
+                FgColor = Color.Red
+                BgColor = Color.Black
+                Bold = true }
           NormalStyle = Style.Default
+          FocusedStyle =
+            { Style.Default with
+                FgColor = Color.Black
+                BgColor = Color.Cyan }
           FocusedIndicator = "▸ " },
         Cmd.none
 
     let rec update msg model =
         match msg with
         | MoveUp ->
-            let newSel = max 0 (model.Selected - 1)
+            let newSel = max 0 (model.FocusItemIndex - 1)
+
             let offset =
-                if newSel < model.ViewportOffset then newSel
-                else model.ViewportOffset
-            { model with Selected = newSel; ViewportOffset = offset }, Cmd.none
+                if newSel < model.ViewportOffset then
+                    newSel
+                else
+                    model.ViewportOffset
+
+            { model with
+                FocusItemIndex = newSel
+                ViewportOffset = offset },
+            Cmd.none
 
         | MoveDown ->
-            let newSel = min (model.Items.Length - 1) (model.Selected + 1)
+            let newSel = min (model.Items.Length - 1) (model.FocusItemIndex + 1)
+
             let offset =
                 if newSel >= model.ViewportOffset + model.ViewportSize then
                     newSel - model.ViewportSize + 1
-                else model.ViewportOffset
-            { model with Selected = newSel; ViewportOffset = offset }, Cmd.none
+                else
+                    model.ViewportOffset
 
-        | Select -> model, Cmd.none
+            { model with
+                FocusItemIndex = newSel
+                ViewportOffset = offset },
+            Cmd.none
+
+        | Select ->
+            let selectedIndex =
+                match model.SelectedItemIndex, model.FocusItemIndex with
+                | None, idx -> Some idx
+                | Some idx, i -> if idx = i then None else Some i
+
+            { model with
+                SelectedItemIndex = selectedIndex },
+            Cmd.none
 
         | KeyInput cki when model.Focused ->
             match cki.Key with
@@ -65,9 +98,7 @@ module ListComponent =
         | KeyInput _ -> model, Cmd.none
 
     let selectedItem model =
-        if model.Selected >= 0 && model.Selected < model.Items.Length then
-            Some model.Items[model.Selected]
-        else None
+        model.SelectedItemIndex |> Option.map (fun idx -> model.Items[idx])
 
     let view (model: Model<'item>) : Node =
         let visibleItems =
@@ -79,9 +110,21 @@ module ListComponent =
             visibleItems
             |> List.mapi (fun i item ->
                 let idx = i + model.ViewportOffset
-                let isSelected = idx = model.Selected
-                let style = if isSelected then model.SelectedStyle else model.NormalStyle
-                let prefix = if isSelected then model.FocusedIndicator else String.replicate model.FocusedIndicator.Length " "
-                Node.styledText style $"{prefix}{model.ItemToString item}")
+                let isFocused = idx = model.FocusItemIndex
+                let isSelected = model.SelectedItemIndex |> Option.contains idx
 
-        Node.column rows
+                let style =
+                    match isSelected, isFocused with
+                    | true, _ -> model.SelectedStyle
+                    | false, true -> model.FocusedStyle
+                    | false, false -> model.NormalStyle
+
+                let prefix =
+                    if isFocused then
+                        model.FocusedIndicator
+                    else
+                        String.replicate model.FocusedIndicator.Length " "
+
+                Ui.text $"{prefix}{model.ItemToString item}" |> Ui.style style)
+
+        Ui.col rows

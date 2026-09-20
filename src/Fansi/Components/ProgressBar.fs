@@ -1,6 +1,7 @@
 namespace Fansi
 
 open System
+open Fansi
 open Fansi.Core
 
 [<RequireQualifiedAccess>]
@@ -20,12 +21,17 @@ module ProgressBarComponent =
           Width = width
           FilledChar = '█'
           EmptyChar = '░'
-          FilledStyle = { Style.Default with FgColor = Color.Green }
-          EmptyStyle = { Style.Default with FgColor = Color.BrightBlack }
+          FilledStyle =
+            { Style.Default with
+                FgColor = Color.Green }
+          EmptyStyle =
+            { Style.Default with
+                FgColor = Color.BrightBlack }
           ShowPercentage = true }
 
     let setProgress progress model =
-        { model with Progress = Math.Clamp(progress, 0.0, 1.0) }
+        { model with
+            Progress = Math.Clamp(progress, 0.0, 1.0) }
 
     let view (model: Model) : Node =
         let filledCount = int (float model.Width * model.Progress)
@@ -34,13 +40,12 @@ module ProgressBarComponent =
         let empty = String.replicate emptyCount (string model.EmptyChar)
 
         let bar =
-            Node.row [
-                Node.styledText model.FilledStyle filled
-                Node.styledText model.EmptyStyle empty
-            ]
+            Ui.row
+                [ Ui.text filled |> Ui.style model.FilledStyle
+                  Ui.text empty |> Ui.style model.EmptyStyle ]
 
         if model.ShowPercentage then
             let pct = $" {int (model.Progress * 100.0)}%%"
-            Node.row [ bar; Node.text pct ]
+            Ui.row [ bar; Ui.text pct ]
         else
             bar

@@ -30,7 +30,10 @@ module Input =
 
                     let button =
                         if isScroll then
-                            if baseButton = 0 then MouseButton.ScrollUp else MouseButton.ScrollDown
+                            if baseButton = 0 then
+                                MouseButton.ScrollUp
+                            else
+                                MouseButton.ScrollDown
                         else
                             match baseButton with
                             | 0 -> MouseButton.Left
@@ -61,7 +64,7 @@ module Input =
                 | _ -> Option.None
 
     /// Check if a point (x, y) is inside a rectangle
-    let hitTest (x: int) (y: int) (rect: Core.Layout.Rect) =
+    let hitTest (x: int) (y: int) (rect: Core.Rect) =
         x >= rect.X
         && x < rect.X + rect.Width
         && y >= rect.Y

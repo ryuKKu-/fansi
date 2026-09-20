@@ -20,7 +20,7 @@ module Keymap =
             { Keys = [| key |]
               Disabled = false
               Help = None }
-        
+
         static member create keys =
             { Keys = keys
               Disabled = false

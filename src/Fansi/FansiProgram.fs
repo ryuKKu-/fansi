@@ -2,42 +2,25 @@ namespace Fansi
 
 open Elmish
 open System
+open Fansi
 open Fansi.Core
-open Fansi.Core.Layout
 open Fansi.Renderer
 open System.Threading.Tasks
 
 type private InternalProgram<'model, 'msg>
-    (
-        renderer: Renderer,
-        program: Program<unit, 'model, FansiMsg<'msg>, Node>,
-        mouseEnabled: bool
-    ) =
+    (renderer: Renderer, program: Program<unit, 'model, FansiMsg<'msg>, Node>, mouseEnabled: bool) =
     let mutable dispatch = ignore<FansiMsg<'msg>>
     let mutable oldModel: 'model option = None
-    let mutable viewTree = Node.empty
+    let mutable viewTree = Ui.empty
     let mutable p = Unchecked.defaultof<Program<unit, 'model, FansiMsg<'msg>, Node>>
     let mutable quit = false
     let mutable runProgramLoop = fun () -> ()
-    let mutable lastLayoutNodes: LayoutNode list = []
 
     let termWidth () = Console.WindowWidth
     let termHeight () = Console.WindowHeight
 
     let renderView (tree: Node) =
-        let w = termWidth ()
-        let h = termHeight ()
-        let result = Layout.layout w h tree
-        lastLayoutNodes <- result.Nodes
-        let spans = result.Nodes |> List.collect Layout.flattenToSpans
-        let borderSpans =
-            match tree with
-            | Box _ ->
-                match result.Nodes with
-                | [ rootLayout ] -> Layout.collectBorderSpans tree rootLayout
-                | _ -> []
-            | _ -> []
-        renderer.SetFrame spans borderSpans w h
+        renderer.SetFrame(Paint.render (termWidth ()) (termHeight ()) tree)
 
     let mutable setState =
         fun model dispatch ->
@@ -53,6 +36,7 @@ type private InternalProgram<'model, 'msg>
     let tryReadMouseSequence () =
         if mouseBuffer.Length > 0 then
             let buf = mouseBuffer.ToString()
+
             match Input.tryParseMouseEvent buf with
             | Some evt ->
                 mouseBuffer.Clear() |> ignore
@@ -67,11 +51,13 @@ type private InternalProgram<'model, 'msg>
                 if Console.KeyAvailable then
                     if mouseEnabled then
                         let ch = char (Console.In.Read())
+
                         if ch = '\x1b' then
                             mouseBuffer.Clear() |> ignore
                             mouseBuffer.Append(ch) |> ignore
                         elif mouseBuffer.Length > 0 then
                             mouseBuffer.Append(ch) |> ignore
+
                             if ch = 'M' || ch = 'm' then
                                 tryReadMouseSequence ()
                         else
@@ -161,13 +147,15 @@ module FansiProgram =
     let withMouseEnabled (p: FansiProgram<'model, 'msg>) = { p with mouseEnabled = true }
 
     let withSubscription subscribe (p: FansiProgram<'model, 'msg>) =
-        { p with program = Program.withSubscription subscribe p.program }
+        { p with
+            program = Program.withSubscription subscribe p.program }
 
     let run (p: FansiProgram<'model, 'msg>) =
         let renderer = Renderer(p.fps)
 
         renderer.Execute(AnsiSequence.enableAltScreenBuffer)
         renderer.Execute(AnsiSequence.hideCursor)
+
         if p.mouseEnabled then
             renderer.Execute(AnsiSequence.enableMouseTracking)
 
@@ -180,5 +168,6 @@ module FansiProgram =
         finally
             if p.mouseEnabled then
                 renderer.Execute(AnsiSequence.disableMouseTracking)
+
             renderer.Execute(AnsiSequence.showCursor)
             renderer.Execute(AnsiSequence.disableAltScreenBuffer)

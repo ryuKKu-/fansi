@@ -1,6 +1,7 @@
 namespace Fansi
 
 open Elmish
+open Fansi
 open Fansi.Core
 
 [<RequireQualifiedAccess>]
@@ -12,8 +13,7 @@ module SpinnerComponent =
         | Braille
         | Custom of string array
 
-    type Message =
-        | Tick
+    type Message = | Tick
 
     type Model =
         { Frame: int
@@ -33,22 +33,26 @@ module SpinnerComponent =
         { Frame = 0
           Frames = framesFor spinnerStyle
           Interval = interval
-          Style = { Style.Default with FgColor = Color.Cyan }
+          Style =
+            { Style.Default with
+                FgColor = Color.Cyan }
           Label = label },
         Cmd.none
 
     let update msg model =
         match msg with
         | Tick ->
-            { model with Frame = (model.Frame + 1) % model.Frames.Length }, Cmd.none
+            { model with
+                Frame = (model.Frame + 1) % model.Frames.Length },
+            Cmd.none
 
     let subscribe model =
         [ [ "spinner" ], Sub.timer model.Interval Tick ]
 
     let view model : Node =
         let frame = model.Frames[model.Frame]
-        Node.row [
-            Node.styledText model.Style frame
-            if model.Label.Length > 0 then
-                Node.text $" {model.Label}"
-        ]
+
+        Ui.row
+            [ Ui.text frame |> Ui.style model.Style
+              if model.Label.Length > 0 then
+                  Ui.text $" {model.Label}" ]

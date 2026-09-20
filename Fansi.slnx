@@ -8,4 +8,7 @@
   <Folder Name="/src/">
     <Project Path="src/Fansi/Fansi.fsproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Fansi.Tests/Fansi.Tests.fsproj" />
+  </Folder>
 </Solution>

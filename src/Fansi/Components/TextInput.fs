@@ -2,13 +2,19 @@ namespace Fansi
 
 open System
 open System.Text
+open System.Threading
 open Elmish
+open Fansi
 open Fansi.Core
 open Fansi.Keymap
 
 [<RequireQualifiedAccess>]
-module Cursor =
-    type CursorId = int
+module VirtualCursor =
+    let mutable lastId = 0L
+
+    let nextId () = Interlocked.Increment(&lastId)
+
+    type CursorId = int64
 
     type CursorType =
         | Blink
@@ -17,6 +23,7 @@ module Cursor =
 
     type Message =
         | Focus of CursorId
+        | Blur of CursorId
         | BlinkTick of CursorId
 
     type Model =
@@ -27,20 +34,34 @@ module Cursor =
           Char: char
           Blink: bool }
 
-    let init id =
-        { Id = id
+    let create =
+        { Id = nextId ()
           Type = Blink
-          Char = '│'
+          Char = ' '
           Focused = false
           Blink = true
           BlinkSpeed = 530.0 }
 
+    let setCharacter c (model: Model) = { model with Char = c }
+
     let update msg model =
         match msg with
         | Focus id ->
-            if model.Id <> id then model, Cmd.none
+            if model.Id <> id then
+                model, Cmd.none
             else
-                { model with Focused = true; Blink = model.Type <> Hidden }, Cmd.none
+                { model with
+                    Focused = true
+                    Blink = model.Type <> Hidden },
+                Cmd.none
+        | Blur id ->
+            if model.Id <> id then
+                model, Cmd.none
+            else
+                { model with
+                    Focused = false
+                    Blink = false },
+                Cmd.none
         | BlinkTick id ->
             if model.Id <> id || not model.Focused || model.Type <> Blink then
                 model, Cmd.none
@@ -49,15 +70,13 @@ module Cursor =
 
     let view model : Node =
         if model.Blink then
-            Node.styledText
-                { Style.Default with FgColor = Color.Cyan }
-                (string model.Char)
+            Ui.text (string model.Char) |> Ui.bg Color.Cyan
         else
-            Node.text " "
+            Ui.text (string model.Char)
 
     let subscribe model =
         [ if model.Focused && model.Type = Blink then
-            [ "cursor"; string model.Id ], Sub.timer model.BlinkSpeed (BlinkTick model.Id) ]
+              [ "cursor"; string model.Id ], Sub.timer model.BlinkSpeed (BlinkTick model.Id) ]
 
 
 [<RequireQualifiedAccess>]
@@ -65,8 +84,8 @@ module TextInputComponent =
 
     type Message =
         | Focus
-        | Unfocus
-        | CursorMsg of Cursor.Message
+        | Blur
+        | CursorMsg of VirtualCursor.Message
         | KeyInput of ConsoleKeyInfo
 
     type Keymap =
@@ -76,90 +95,145 @@ module TextInputComponent =
           DeleteForward: KeyBind }
 
     let defaultKeymap =
-        { CharacterForward = KeyBind.create { Key = ConsoleKey.RightArrow; Modifier = None }
-          CharacterBackward = KeyBind.create { Key = ConsoleKey.LeftArrow; Modifier = None }
-          DeleteBackward = KeyBind.create { Key = ConsoleKey.Backspace; Modifier = None }
-          DeleteForward = KeyBind.create { Key = ConsoleKey.Delete; Modifier = None } }
+        { CharacterForward =
+            KeyBind.create
+                { Key = ConsoleKey.RightArrow
+                  Modifier = None }
+          CharacterBackward =
+            KeyBind.create
+                { Key = ConsoleKey.LeftArrow
+                  Modifier = None }
+          DeleteBackward =
+            KeyBind.create
+                { Key = ConsoleKey.Backspace
+                  Modifier = None }
+          DeleteForward =
+            KeyBind.create
+                { Key = ConsoleKey.Delete
+                  Modifier = None } }
 
     type Model =
         { Focused: bool
           Value: StringBuilder
-          SizeLimit: int
+          CharLimit: int
           Keymap: Keymap
           Prompt: string
           PromptStyle: Style
           TextStyle: Style
-          Position: int
-          Cursor: Cursor.Model }
+          CursorPosition: int
+          UseVirtualCursor: bool
+          Cursor: VirtualCursor.Model }
 
-    let setCursorPosition (model: Model) pos =
+    let setCursorPosition pos (model: Model) =
         let p = Math.Clamp(pos, 0, model.Value.Length)
-        { model with Position = p }
+        let c = if p < model.Value.Length then model.Value.Chars p else ' '
+
+        { model with
+            CursorPosition = p
+            Cursor.Char = c }
+
+    let insertSpan (s: ReadOnlySpan<char>) (model: Model) =
+        let span =
+            match model.CharLimit > 0 with
+            | true ->
+                match model.CharLimit - (model.Value.Length + s.Length) with
+                | availableSpace when availableSpace < s.Length ->
+                    let slice = s.Slice(0, availableSpace)
+                    slice
+                | availableSpace when availableSpace >= s.Length -> s
+                | _ -> ReadOnlySpan<char>.Empty
+            | false -> s
+
+        model.Value.Insert(model.CursorPosition, span) |> ignore
+        setCursorPosition (model.CursorPosition + span.Length) model
 
     let init () =
-        let cursor = Cursor.init 1
         { Focused = false
           Value = StringBuilder()
           Keymap = defaultKeymap
-          SizeLimit = 0
+          CharLimit = 0
           Prompt = "> "
-          PromptStyle = { Style.Default with FgColor = Color.BrightCyan; Bold = true }
+          PromptStyle =
+            { Style.Default with
+                FgColor = Color.BrightCyan
+                Bold = true }
           TextStyle = Style.Default
-          Position = 0
-          Cursor = cursor },
+          CursorPosition = 0
+          UseVirtualCursor = true
+          Cursor = VirtualCursor.create },
         Cmd.none
 
     let update msg model =
         match msg with
         | Focus ->
-            let cursor, _ = Cursor.update (Cursor.Focus model.Cursor.Id) model.Cursor
-            { model with Focused = true; Cursor = cursor }, Cmd.none
+            if not model.UseVirtualCursor then
+                { model with Focused = true }, Cmd.none
+            else
+                let cursor, _ =
+                    VirtualCursor.update (VirtualCursor.Focus model.Cursor.Id) model.Cursor
 
-        | Unfocus ->
-            { model with Focused = false; Cursor = { model.Cursor with Focused = false } }, Cmd.none
+                { model with
+                    Focused = true
+                    Cursor = cursor },
+                Cmd.none
 
-        | CursorMsg cmsg ->
-            let m, cmd = Cursor.update cmsg model.Cursor
+        | Blur ->
+            if not model.UseVirtualCursor then
+                { model with Focused = false }, Cmd.none
+            else
+                let cursor, _ =
+                    VirtualCursor.update (VirtualCursor.Blur model.Cursor.Id) model.Cursor
+
+                { model with
+                    Focused = false
+                    Cursor = cursor },
+                Cmd.none
+
+        | CursorMsg msg ->
+            let m, cmd = VirtualCursor.update msg model.Cursor
             { model with Cursor = m }, Cmd.map CursorMsg cmd
 
         | KeyInput cki when model.Focused ->
-            if Keymap.``match`` model.Keymap.CharacterForward cki then
-                setCursorPosition model (model.Position + 1), Cmd.none
-            elif Keymap.``match`` model.Keymap.CharacterBackward cki then
-                setCursorPosition model (model.Position - 1), Cmd.none
+            if
+                Keymap.``match`` model.Keymap.CharacterForward cki
+                && model.CursorPosition < model.Value.Length
+            then
+                setCursorPosition (model.CursorPosition + 1) model, Cmd.none
+            elif Keymap.``match`` model.Keymap.CharacterBackward cki && model.CursorPosition > 0 then
+                setCursorPosition (model.CursorPosition - 1) model, Cmd.none
             elif Keymap.``match`` model.Keymap.DeleteBackward cki then
-                if model.Position > 0 then
-                    model.Value.Remove(model.Position - 1, 1) |> ignore
-                    setCursorPosition model (model.Position - 1), Cmd.none
-                else model, Cmd.none
-            elif Keymap.``match`` model.Keymap.DeleteForward cki then
-                if model.Position < model.Value.Length then
-                    model.Value.Remove(model.Position, 1) |> ignore
+                if model.CursorPosition > 0 then
+                    model.Value.Remove(model.CursorPosition - 1, 1) |> ignore
+                    setCursorPosition (model.CursorPosition - 1) model, Cmd.none
+                else
                     model, Cmd.none
-                else model, Cmd.none
+            elif Keymap.``match`` model.Keymap.DeleteForward cki then
+                if model.CursorPosition < model.Value.Length then
+                    model.Value.Remove(model.CursorPosition, 1) |> ignore
+                    setCursorPosition model.CursorPosition model, Cmd.none
+                else
+                    model, Cmd.none
             elif not (Char.IsControl cki.KeyChar) then
-                model.Value.Insert(model.Position, cki.KeyChar) |> ignore
-                setCursorPosition model (model.Position + 1), Cmd.none
+                model.Value.Insert(model.CursorPosition, cki.KeyChar) |> ignore
+                setCursorPosition (model.CursorPosition + 1) model, Cmd.none
             else
                 model, Cmd.none
 
-        | KeyInput _ -> model, Cmd.none
+        | _ -> model, Cmd.none
 
     let subscribe model =
         if model.Focused then
-            Sub.map "input" CursorMsg (Cursor.subscribe model.Cursor)
+            Sub.map "input" CursorMsg (VirtualCursor.subscribe model.Cursor)
         else
             []
 
     let view model : Node =
-        let s = model.Value.ToString()
-        let before = if model.Position > 0 then s.Substring(0, model.Position) else ""
-        let after = if model.Position < s.Length then s.Substring(model.Position) else ""
-        let cursorNode = Cursor.view model.Cursor
+        let value = model.Value.ToString()
+        let before = value[.. model.CursorPosition - 1]
 
-        Node.row [
-            Node.styledText model.PromptStyle model.Prompt
-            Node.styledText model.TextStyle before
-            cursorNode
-            Node.styledText model.TextStyle after
-        ]
+        Ui.row
+            [ Ui.text model.Prompt |> Ui.style model.PromptStyle
+              Ui.text before |> Ui.style model.TextStyle
+              VirtualCursor.view model.Cursor
+              if model.CursorPosition < value.Length then
+                  Ui.text (value.Substring(model.CursorPosition + 1)) |> Ui.style model.TextStyle ]

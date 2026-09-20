@@ -1,13 +1,13 @@
 namespace Fansi
 
 open Elmish
+open Fansi
 open Fansi.Core
 
 [<RequireQualifiedAccess>]
 module CheckboxComponent =
 
-    type Message =
-        | Toggle
+    type Message = | Toggle
 
     type Model =
         { Checked: bool
@@ -24,18 +24,33 @@ module CheckboxComponent =
           Focused = false
           CheckedChar = "☑"
           UncheckedChar = "☐"
-          CheckedStyle = { Style.Default with FgColor = Color.Green; Bold = true }
+          CheckedStyle =
+            { Style.Default with
+                FgColor = Color.Green
+                Bold = true }
           UncheckedStyle = Style.Default },
         Cmd.none
 
     let update msg model =
         match msg with
-        | Toggle -> { model with Checked = not model.Checked }, Cmd.none
+        | Toggle ->
+            { model with
+                Checked = not model.Checked },
+            Cmd.none
 
     let view model : Node =
-        let checkMark = if model.Checked then model.CheckedChar else model.UncheckedChar
-        let style = if model.Checked then model.CheckedStyle else model.UncheckedStyle
-        Node.row [
-            Node.styledText style $"{checkMark} "
-            Node.styledText style model.Label
-        ]
+        let checkMark =
+            if model.Checked then
+                model.CheckedChar
+            else
+                model.UncheckedChar
+
+        let style =
+            if model.Checked then
+                model.CheckedStyle
+            else
+                model.UncheckedStyle
+
+        Ui.row
+            [ Ui.text $"{checkMark} " |> Ui.style style
+              Ui.text model.Label |> Ui.style style ]

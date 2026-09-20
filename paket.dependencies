@@ -2,3 +2,7 @@ source https://api.nuget.org/v3/index.json
 
 nuget elmish
 nuget FSharp.Core
+nuget xunit
+nuget xunit.runner.visualstudio
+nuget Microsoft.NET.Test.Sdk
+nuget FsCheck.Xunit

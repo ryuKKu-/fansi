@@ -1,21 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Fansi</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Core\Geometry.fs" />
+    <Compile Include="Core\Style.fs" />
+    <Compile Include="Core\Props.fs" />
+    <Compile Include="Core\Node.fs" />
+    <Compile Include="Ui.fs" />
+    <Compile Include="Core\Solver.fs" />
+    <Compile Include="Core\Layout.fs" />
+    <Compile Include="Core\Buffer.fs" />
     <Compile Include="Types.fs" />
     <Compile Include="Elmish.fs" />
-    <Compile Include="Core\Node.fs" />
-    <Compile Include="Core\Layout.fs" />
     <Compile Include="Core\Input.fs" />
     <Compile Include="Renderer.fs" />
     <Compile Include="Keymap.fs" />
     <Compile Include="FansiProgram.fs" />
-    <Compile Include="Components\Text.fs" />
-    <Compile Include="Components\Box.fs" />
     <Compile Include="Components\Timer.fs" />
     <Compile Include="Components\TextInput.fs" />
     <Compile Include="Components\Button.fs" />
@@ -23,7 +26,6 @@
     <Compile Include="Components\Checkbox.fs" />
     <Compile Include="Components\ProgressBar.fs" />
     <Compile Include="Components\Spinner.fs" />
-    <Compile Include="Program.fs" />
     <None Include="paket.references" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
