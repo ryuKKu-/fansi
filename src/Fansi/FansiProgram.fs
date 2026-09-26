@@ -27,7 +27,7 @@ type private InternalProgram<'model, 'msg>
             viewTree <- Program.view p model dispatch
             oldModel <- Some model
 
-    let mutable equal = fun m1 m2 -> obj.ReferenceEquals(m1, m2)
+    let equal = fun m1 m2 -> obj.ReferenceEquals(m1, m2)
 
     let shouldRender oldModel newModel = not <| equal oldModel newModel
 
@@ -117,6 +117,11 @@ type private InternalProgram<'model, 'msg>
                 quit <- true)
 
             runProgramLoop ()
+
+            // Paints the first frame. runFirstRender calls setState while it is
+            // still the non-rendering version assigned at init, and the rendering
+            // version installed above only runs when a message arrives — so an app
+            // whose init dispatches nothing would never paint without this.
             renderView viewTree
 
             do! userInputTask ()

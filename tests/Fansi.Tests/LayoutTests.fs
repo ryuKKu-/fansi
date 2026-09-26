@@ -137,6 +137,18 @@ let ``justify between spreads the slack into the gaps`` () =
     Assert.Equal<int list>([ 0; 9 ], rects laid |> List.map (fun r -> r.X))
 
 [<Fact>]
+let ``justify between leaves no cell over at the far edge`` () =
+    let node =
+        Ui.row [ Ui.text "a"; Ui.text "b"; Ui.text "c" ] |> Ui.justify Justify.Between
+
+    let laid = Layout.arrange node (screen 20 1)
+    let placed = rects laid
+    Assert.Equal<int list>([ 0; 10; 19 ], placed |> List.map (fun r -> r.X))
+    // the last child must finish flush with the right edge, not one short
+    let last = List.last placed
+    Assert.Equal(20, last.X + last.Width)
+
+[<Fact>]
 let ``align stretch gives children the full cross extent`` () =
     let node = Ui.row [ Ui.text "a" ] |> Ui.align Align.Stretch
     let laid = Layout.arrange node (screen 10 5)
@@ -187,3 +199,13 @@ let ``nested containers keep tiling`` () =
     let top = List.head laid.Children
     Assert.Equal(23, top.Rect.Height)
     Assert.Equal(80, top.Children |> List.sumBy (fun c -> c.Rect.Width))
+
+[<Fact>]
+let ``a node with saturated padding measures without wrapping`` () =
+    // exact values matter here: a loose ">= 0" check would still pass if outer
+    // wrapped negative and max 0 flattened it, which is the bug this pins against
+    let maxNode = Ui.col [ Ui.text "x" ] |> Ui.pad System.Int32.MaxValue
+    Assert.Equal((System.Int32.MaxValue, System.Int32.MaxValue), Layout.measure maxNode 80 24)
+
+    let minNode = Ui.col [ Ui.text "x" ] |> Ui.pad System.Int32.MinValue
+    Assert.Equal((0, 0), Layout.measure minNode 80 24)

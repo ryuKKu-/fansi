@@ -1,13 +1,39 @@
 namespace Fansi.Core
 
+/// Sums that cannot wrap. Margins, padding and sizes come from user code as
+/// unconstrained ints, so a total can leave the int range. F# truncates an
+/// out-of-range int64 to its low 32 bits, and a total that wraps negative makes
+/// Rect.deflate grow a rect instead of shrinking it, so these clamp instead.
+module Saturating =
+
+    let private clamp (total: int64) =
+        total
+        |> min (int64 System.Int32.MaxValue)
+        |> max (int64 System.Int32.MinValue)
+        |> int
+
+    let add a b = clamp (int64 a + int64 b)
+
+    /// Clamps once on the combined total, not on each pairwise step, so it is not
+    /// the same as `add (add a b) c`: chaining `add` can clamp partway through and
+    /// lose the rest of the range, e.g. `add (add MaxValue MaxValue) MinValue` is
+    /// `-1`, while `add3 MaxValue MaxValue MinValue` is `MaxValue - 1`.
+    let add3 a b c = clamp (int64 a + int64 b + int64 c)
+
+    let sub a b = clamp (int64 a - int64 b)
+
 type Edges =
     { Top: int
       Right: int
       Bottom: int
       Left: int }
 
-    member this.Horizontal = this.Left + this.Right
-    member this.Vertical = this.Top + this.Bottom
+    /// Left plus right. The individual edges come from user code and are unconstrained
+    /// ints; a wrapped total would make Rect.deflate grow a rect instead of shrinking it.
+    member this.Horizontal = Saturating.add this.Left this.Right
+
+    /// Top plus bottom. Saturated for the same reason as Horizontal.
+    member this.Vertical = Saturating.add this.Top this.Bottom
 
     static member Zero =
         { Top = 0
@@ -39,10 +65,8 @@ type Rect =
       Width: int
       Height: int }
 
-    member this.Right = this.X + this.Width
-    member this.Bottom = this.Y + this.Height
-
-    static member Empty = { X = 0; Y = 0; Width = 0; Height = 0 }
+    member this.Right = Saturating.add this.X this.Width
+    member this.Bottom = Saturating.add this.Y this.Height
 
 module Rect =
     let isEmpty (r: Rect) = r.Width <= 0 || r.Height <= 0
@@ -64,7 +88,7 @@ module Rect =
     let deflate (e: Edges) (r: Rect) =
         { X = r.X + e.Left
           Y = r.Y + e.Top
-          Width = max 0 (r.Width - e.Horizontal)
-          Height = max 0 (r.Height - e.Vertical) }
+          Width = max 0 (Saturating.sub r.Width e.Horizontal)
+          Height = max 0 (Saturating.sub r.Height e.Vertical) }
 
     let deflateBy n (r: Rect) = deflate (Edges.All n) r

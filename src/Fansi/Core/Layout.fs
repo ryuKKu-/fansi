@@ -80,18 +80,37 @@ module Layout =
     let private chrome (p: Props) =
         let bt = Border.thickness p.Border
 
-        { Top = p.Margin.Top + bt + p.Padding.Top
-          Right = p.Margin.Right + bt + p.Padding.Right
-          Bottom = p.Margin.Bottom + bt + p.Padding.Bottom
-          Left = p.Margin.Left + bt + p.Padding.Left }
+        // Margin and padding are unconstrained ints from user code, so a wrapped
+        // negative would make the inner area larger than the outer one.
+        let side margin padding = Saturating.add3 margin bt padding
+
+        { Top = side p.Margin.Top p.Padding.Top
+          Right = side p.Margin.Right p.Padding.Right
+          Bottom = side p.Margin.Bottom p.Padding.Bottom
+          Left = side p.Margin.Left p.Padding.Left }
+
+    /// How much room a child gets across its parent's axis, worked out without
+    /// its intrinsic size. Only Len, Pct and Ratio can be settled that way; the
+    /// rest need the intrinsic, so they keep the whole available extent. Measuring
+    /// a child against this instead of the parent's full cross extent is what stops
+    /// it being measured at one width and then placed at another.
+    let private crossExtent (c: Constraint) (available: int) =
+        match c with
+        | Len _
+        | Pct _
+        | Ratio _ -> Solver.solve [ c ] [ 0 ] available |> List.head
+        | Auto
+        | Fill _
+        | Min _
+        | Max _ -> available
 
     /// The intrinsic outer size of a node: how big it wants to be, including its
     /// own margin, border and padding.
     let rec measure (node: Node) (availW: int) (availH: int) : int * int =
         let p = Node.props node
         let c = chrome p
-        let innerW = max 0 (availW - c.Horizontal)
-        let innerH = max 0 (availH - c.Vertical)
+        let innerW = max 0 (Saturating.sub availW c.Horizontal)
+        let innerH = max 0 (Saturating.sub availH c.Vertical)
 
         let contentW, contentH =
             match node with
@@ -106,14 +125,7 @@ module Layout =
                     | Row -> innerW, innerH
                     | Column -> innerH, innerW
 
-                let measured =
-                    children
-                    |> List.map (fun child ->
-                        match p.Direction with
-                        | Row -> measure child mainAvail crossAvail
-                        | Column ->
-                            let w, h = measure child crossAvail mainAvail
-                            h, w)
+                let measured = measureChildren p.Direction children mainAvail crossAvail
 
                 let mainIntrinsics = measured |> List.map fst
                 let crossIntrinsics = measured |> List.map snd
@@ -125,7 +137,25 @@ module Layout =
                 | Row -> mainTotal, crossMax
                 | Column -> crossMax, mainTotal
 
-        contentW + c.Horizontal, contentH + c.Vertical
+        // Saturated for the same reason as chrome: the chrome itself can reach
+        // Int32.MaxValue, so adding content to it wraps and hands the solver a
+        // negative intrinsic size. Unlike an edge sum, a measured size is never
+        // negative, so this also floors the result at zero.
+        let outer inner edge = max 0 (Saturating.add inner edge)
+
+        outer contentW c.Horizontal, outer contentH c.Vertical
+
+    /// Measure children as (main, cross) pairs in the parent's own axes.
+    and private measureChildren direction (children: Node list) mainAvail crossAvail =
+        children
+        |> List.map (fun child ->
+            let cross = crossExtent (Node.props child).Cross crossAvail
+
+            match direction with
+            | Row -> measure child mainAvail cross
+            | Column ->
+                let w, h = measure child cross mainAvail
+                h, w)
 
     type LayoutNode =
         { Rect: Rect
@@ -144,21 +174,25 @@ module Layout =
         let count = List.length sizes
         let slack = max 0 slack
 
-        let start =
-            match justify with
-            | Justify.Start
-            | Justify.Between -> 0
-            | Justify.End -> slack
-            | Justify.Center -> slack / 2
+        if count = 0 then
+            []
+        else
+            let start =
+                match justify with
+                | Justify.Start
+                | Justify.Between -> 0
+                | Justify.End -> slack
+                | Justify.Center -> slack / 2
 
-        let gap =
-            match justify with
-            | Justify.Between when count > 1 -> slack / (count - 1)
-            | _ -> 0
+            // Between spreads the slack across the count-1 gaps. One uniform
+            // slack/(count-1) truncates and leaves the last child short of the far
+            // edge, so the gaps are shared out the same way child sizes are.
+            let gaps =
+                match justify with
+                | Justify.Between when count > 1 -> Solver.distribute slack (List.replicate (count - 1) 1)
+                | _ -> List.replicate (count - 1) 0
 
-        sizes
-        |> List.scan (fun acc size -> acc + size + gap) start
-        |> List.truncate count
+            List.map2 (+) sizes (gaps @ [ 0 ]) |> List.scan (+) start |> List.truncate count
 
     let private crossSize (align: Align) (child: Node) (intrinsic: int) (available: int) =
         match (Node.props child).Cross with
@@ -196,14 +230,7 @@ module Layout =
                     | Row -> inner.Width, inner.Height
                     | Column -> inner.Height, inner.Width
 
-                let measured =
-                    kids
-                    |> List.map (fun kid ->
-                        match p.Direction with
-                        | Row -> measure kid mainAvail crossAvail
-                        | Column ->
-                            let w, h = measure kid crossAvail mainAvail
-                            h, w)
+                let measured = measureChildren p.Direction kids mainAvail crossAvail
 
                 let constraints = kids |> List.map (fun k -> (Node.props k).Main)
                 let sizes = Solver.solve constraints (List.map fst measured) mainAvail

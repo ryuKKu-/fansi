@@ -92,3 +92,60 @@ let ``the three panel layout tiles the width`` () =
     Assert.Equal(3, List.length lines)
     Assert.All(lines, fun l -> Assert.Equal(12, l.Length))
     Assert.Equal("+--++--++--+", lines[0])
+
+[<Fact>]
+let ``a cross constraint is measured, not only applied at placement`` () =
+    // measuring the child against the parent's full width while placing it at
+    // Len 3 cut "hello world" down to "hel" and dropped the rest
+    let node = Ui.col [ Ui.text "hello world" |> Ui.cross (Len 3) ]
+    let lines = render 11 4 node
+    Assert.Equal<string list>([ "hel"; "lo "; "wor"; "ld " ], lines |> List.map (fun l -> l.Substring(0, 3)))
+    Assert.All(lines, fun l -> Assert.Equal("        ", l.Substring 3))
+
+[<Fact>]
+let ``a percentage cross constraint is measured too`` () =
+    let node = Ui.col [ Ui.text "hello world" |> Ui.cross (Pct 20) ]
+    let lines = render 40 2 node
+    Assert.Equal<string list>([ "hello wo"; "rld     " ], lines |> List.map (fun l -> l.Substring(0, 8)))
+
+[<Fact>]
+let ``a parent's foreground reaches its children`` () =
+    let node = Ui.col [ Ui.text "hi" ] |> Ui.fg Color.Cyan
+    let buf = Paint.render 2 1 node
+    Assert.Equal(Color.Cyan, (Buffer.get buf 0 0).Style.FgColor)
+
+[<Fact>]
+let ``a parent's bold reaches its children`` () =
+    let node = Ui.col [ Ui.text "hi" ] |> Ui.bold
+    let buf = Paint.render 2 1 node
+    Assert.True((Buffer.get buf 0 0).Style.Bold)
+
+[<Fact>]
+let ``a child's own foreground beats its parent's`` () =
+    let node = Ui.col [ Ui.text "hi" |> Ui.fg Color.Red ] |> Ui.fg Color.Cyan
+    let buf = Paint.render 2 1 node
+    Assert.Equal(Color.Red, (Buffer.get buf 0 0).Style.FgColor)
+
+[<Fact>]
+let ``a double border draws its own glyphs`` () =
+    let node = Ui.col [ Ui.text "x" ] |> Ui.border Double |> Ui.fill 1
+
+    Assert.Equal<string list>([ "╔═╗"; "║x║"; "╚═╝" ], render 3 3 node)
+
+[<Fact>]
+let ``a heavy border draws its own glyphs`` () =
+    let node = Ui.col [ Ui.text "x" ] |> Ui.border Heavy |> Ui.fill 1
+
+    Assert.Equal<string list>([ "┏━┓"; "┃x┃"; "┗━┛" ], render 3 3 node)
+
+[<Fact>]
+let ``a single border draws its own glyphs`` () =
+    let node = Ui.col [ Ui.text "x" ] |> Ui.border Single |> Ui.fill 1
+
+    Assert.Equal<string list>([ "┌─┐"; "│x│"; "└─┘" ], render 3 3 node)
+
+[<Fact>]
+let ``a rounded border draws its own glyphs`` () =
+    let node = Ui.col [ Ui.text "x" ] |> Ui.border Rounded |> Ui.fill 1
+
+    Assert.Equal<string list>([ "╭─╮"; "│x│"; "╰─╯" ], render 3 3 node)

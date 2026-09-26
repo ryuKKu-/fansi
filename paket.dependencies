@@ -1,8 +1,16 @@
 source https://api.nuget.org/v3/index.json
+storage: none
+framework: auto-detect
 
-nuget elmish
 nuget FSharp.Core
-nuget xunit
-nuget xunit.runner.visualstudio
-nuget Microsoft.NET.Test.Sdk
-nuget FsCheck.Xunit
+nuget elmish
+
+group tests
+    source https://api.nuget.org/v3/index.json
+    storage: none
+    framework: auto-detect
+
+    nuget xunit
+    nuget xunit.runner.visualstudio
+    nuget Microsoft.NET.Test.Sdk
+    nuget FsCheck.Xunit

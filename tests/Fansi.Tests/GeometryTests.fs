@@ -72,3 +72,67 @@ let ``edges helpers set the expected sides`` () =
 
     Assert.Equal(4, (Edges.All 2).Horizontal)
     Assert.Equal(4, (Edges.All 2).Vertical)
+
+[<Fact>]
+let ``edge sums saturate instead of wrapping negative`` () =
+    let e =
+        { Top = System.Int32.MaxValue
+          Right = System.Int32.MaxValue
+          Bottom = System.Int32.MaxValue
+          Left = System.Int32.MaxValue }
+
+    Assert.Equal(System.Int32.MaxValue, e.Horizontal)
+    Assert.Equal(System.Int32.MaxValue, e.Vertical)
+
+[<Fact>]
+let ``deflating by a saturated edge empties the rect rather than growing it`` () =
+    let r =
+        { X = 0
+          Y = 0
+          Width = 10
+          Height = 10 }
+
+    let deflated = Rect.deflate (Edges.All System.Int32.MaxValue) r
+    Assert.Equal(0, deflated.Width)
+    Assert.Equal(0, deflated.Height)
+
+[<Fact>]
+let ``deflateBy shrinks every side by the same amount`` () =
+    let r = { X = 2; Y = 3; Width = 10; Height = 8 }
+    Assert.Equal({ X = 3; Y = 4; Width = 8; Height = 6 }, Rect.deflateBy 1 r)
+
+[<Fact>]
+let ``saturating sums clamp at both ends of the int range`` () =
+    Assert.Equal(System.Int32.MaxValue, Saturating.add System.Int32.MaxValue System.Int32.MaxValue)
+    Assert.Equal(System.Int32.MinValue, Saturating.add System.Int32.MinValue System.Int32.MinValue)
+    Assert.Equal(System.Int32.MaxValue, Saturating.add3 System.Int32.MaxValue 1 1)
+    Assert.Equal(System.Int32.MinValue, Saturating.add3 System.Int32.MinValue -1 -1)
+    Assert.Equal(7, Saturating.add 3 4)
+    Assert.Equal(9, Saturating.add3 2 3 4)
+
+[<Fact>]
+let ``add3 clamps on the whole total rather than pairwise`` () =
+    // pins the example in add3's doc comment, which was wrong once already
+    Assert.Equal(-1, Saturating.add (Saturating.add System.Int32.MaxValue System.Int32.MaxValue) System.Int32.MinValue)
+
+    Assert.Equal(
+        System.Int32.MaxValue - 1,
+        Saturating.add3 System.Int32.MaxValue System.Int32.MaxValue System.Int32.MinValue
+    )
+
+[<Fact>]
+let ``saturating differences clamp at both ends of the int range`` () =
+    Assert.Equal(System.Int32.MaxValue, Saturating.sub System.Int32.MaxValue System.Int32.MinValue)
+    Assert.Equal(System.Int32.MinValue, Saturating.sub System.Int32.MinValue System.Int32.MaxValue)
+    Assert.Equal(-1, Saturating.sub 3 4)
+
+[<Fact>]
+let ``edge sums do not wrap when the total goes below the int range`` () =
+    let e =
+        { Top = System.Int32.MinValue
+          Right = -1
+          Bottom = System.Int32.MinValue
+          Left = System.Int32.MinValue }
+
+    Assert.Equal(System.Int32.MinValue, e.Horizontal)
+    Assert.Equal(System.Int32.MinValue, e.Vertical)

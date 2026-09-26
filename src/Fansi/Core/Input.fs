@@ -64,8 +64,4 @@ module Input =
                 | _ -> Option.None
 
     /// Check if a point (x, y) is inside a rectangle
-    let hitTest (x: int) (y: int) (rect: Core.Rect) =
-        x >= rect.X
-        && x < rect.X + rect.Width
-        && y >= rect.Y
-        && y < rect.Y + rect.Height
+    let hitTest (x: int) (y: int) (rect: Core.Rect) = Core.Rect.contains x y rect

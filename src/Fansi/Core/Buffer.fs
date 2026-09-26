@@ -80,11 +80,27 @@ module Paint =
                     style
                     (string bc.BottomLeft + middle + string bc.BottomRight)
 
-    /// Draw a laid-out tree. Each node paints its own background and border, then
-    /// its children, so later siblings end up on top.
-    let rec node (buf: Buffer) (ln: LayoutNode) =
+    /// Combine a node's own style with the one it inherits from its parent.
+    /// A foreground only carries down when the child leaves it Default. The four
+    /// attributes are OR-ed, so a child cannot switch off bold inside a bold parent;
+    /// that is a limitation we accept, since Style has no "off" value to say it with.
+    /// Background is absent on purpose: Buffer.writeText already keeps a parent's
+    /// background visible under its children.
+    let private cascade (parent: Style) (own: Style) =
+        { own with
+            FgColor =
+                if own.FgColor = Color.Default then
+                    parent.FgColor
+                else
+                    own.FgColor
+            Bold = own.Bold || parent.Bold
+            Italic = own.Italic || parent.Italic
+            Underline = own.Underline || parent.Underline
+            Strikethrough = own.Strikethrough || parent.Strikethrough }
+
+    let rec private paint (buf: Buffer) (parent: Style) (ln: LayoutNode) =
         let p = Node.props ln.Node
-        let s = Node.style ln.Node
+        let s = cascade parent (Node.style ln.Node)
 
         if s.BgColor <> Color.Default then
             Buffer.fillRect buf ln.Clip ln.Rect s
@@ -94,13 +110,17 @@ module Paint =
         | None -> ()
 
         match ln.Node with
-        | Text(t, style, _) ->
+        | Text(t, _, _) ->
             let area = contentRect ln
 
             wrapText t area.Width
             |> List.truncate (max 0 area.Height)
-            |> List.iteri (fun i line -> Buffer.writeText buf ln.Clip area.X (area.Y + i) style line)
-        | Container _ -> ln.Children |> List.iter (node buf)
+            |> List.iteri (fun i line -> Buffer.writeText buf ln.Clip area.X (area.Y + i) s line)
+        | Container _ -> ln.Children |> List.iter (paint buf s)
+
+    /// Draw a laid-out tree. Each node paints its own background and border, then
+    /// its children, so later siblings end up on top.
+    let node (buf: Buffer) (ln: LayoutNode) = paint buf Style.Default ln
 
     /// Lay out and draw a tree into a fresh buffer of the given size.
     let render width height (tree: Node) =

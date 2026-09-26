@@ -34,7 +34,9 @@ module VirtualCursor =
           Char: char
           Blink: bool }
 
-    let create =
+    /// A function, not a value: each call must claim its own id, or every text input
+    /// on screen would answer to the same Focus/Blur and share one blink timer.
+    let create () =
         { Id = nextId ()
           Type = Blink
           Char = ' '
@@ -133,16 +135,15 @@ module TextInputComponent =
             Cursor.Char = c }
 
     let insertSpan (s: ReadOnlySpan<char>) (model: Model) =
+        // The room left is the limit minus what is already stored. Subtracting the
+        // incoming length as well truncated a span that fitted exactly, and went
+        // negative when the span was too long, which threw from Slice.
         let span =
-            match model.CharLimit > 0 with
-            | true ->
-                match model.CharLimit - (model.Value.Length + s.Length) with
-                | availableSpace when availableSpace < s.Length ->
-                    let slice = s.Slice(0, availableSpace)
-                    slice
-                | availableSpace when availableSpace >= s.Length -> s
-                | _ -> ReadOnlySpan<char>.Empty
-            | false -> s
+            if model.CharLimit <= 0 then
+                s
+            else
+                let room = max 0 (model.CharLimit - model.Value.Length)
+                if s.Length <= room then s else s.Slice(0, room)
 
         model.Value.Insert(model.CursorPosition, span) |> ignore
         setCursorPosition (model.CursorPosition + span.Length) model
@@ -160,7 +161,7 @@ module TextInputComponent =
           TextStyle = Style.Default
           CursorPosition = 0
           UseVirtualCursor = true
-          Cursor = VirtualCursor.create },
+          Cursor = VirtualCursor.create () },
         Cmd.none
 
     let update msg model =

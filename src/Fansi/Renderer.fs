@@ -102,7 +102,7 @@ module AnsiSequence =
 module Renderer =
     open System.Timers
 
-    type Renderer(fps: int<FPS>) =
+    type Renderer(fps: int<FPS>, out: IO.TextWriter) =
         [<Literal>]
         let defaultFPS = 60
 
@@ -116,6 +116,8 @@ module Renderer =
         let mutable currentBuffer = Buffer.create 0 0
         let mutable previousBuffer = Buffer.create 0 0
         let mutable dirty = false
+
+        new(fps: int<FPS>) = Renderer(fps, Console.Out)
 
         member this.Flush() =
             lock this (fun () ->
@@ -169,8 +171,8 @@ module Renderer =
 
                         if sb.Length > 0 then
                             sb.Append(AnsiSequence.resetStyle) |> ignore
-                            Console.Out.Write(sb.ToString())
-                            Console.Out.Flush()
+                            out.Write(sb.ToString())
+                            out.Flush()
 
                         previousBuffer <- currentBuffer)
 
@@ -179,6 +181,10 @@ module Renderer =
                 ticker.Elapsed.Add(fun _ -> this.Flush())
                 ticker.Start()
 
+        /// Hand a frame to the renderer. The renderer takes ownership of the buffer:
+        /// do not mutate or reuse it afterwards, because it becomes the next frame's
+        /// diff baseline and later writes to it would make those cells look unchanged.
+        /// Give every frame a fresh buffer - Paint.render returns one.
         member this.SetFrame(buffer: Buffer) =
             lock this (fun () ->
                 if buffer.Width <> previousBuffer.Width || buffer.Height <> previousBuffer.Height then
@@ -193,5 +199,5 @@ module Renderer =
                 ticker.Stop()
 
         member this.Execute(str: string) =
-            Console.Out.Write str
-            Console.Out.Flush()
+            out.Write str
+            out.Flush()
