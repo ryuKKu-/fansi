@@ -63,5 +63,7 @@ module TimerComponent =
         Ui.text label |> Ui.style model.Style
 
     let subscribe model =
-        [ if model.Running then
-              [ "timer"; string model.Id ], Sub.timer model.Interval (TickMsg model.Id) ]
+        if model.Running then
+            Sub.timer [ "fansi"; "timer"; string model.Id ] (int model.Interval * 1<ms>) (TickMsg model.Id)
+        else
+            Sub.none

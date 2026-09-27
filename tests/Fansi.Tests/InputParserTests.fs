@@ -427,3 +427,31 @@ let ``a malformed csi ending in another escape loses nothing after it`` () =
 
     Assert.Equal<InputEvent list>([ InputEvent.Key(KeyEvent.plain Key.Up) ], events)
     Assert.Equal(6, consumed)
+
+[<Fact>]
+let ``esc then [ with nothing after is alt+[ once the wait is over`` () =
+    let waiting, consumed = parse "\x1b["
+    Assert.Empty(waiting)
+    Assert.Equal(0, consumed)
+
+    let settled, consumedFinal = parseFinal "\x1b["
+    Assert.Equal<InputEvent list>([ InputEvent.Key(KeyEvent.alt (Key.Char '[')) ], settled)
+    Assert.Equal(2, consumedFinal)
+
+[<Fact>]
+let ``esc then O with nothing after is alt+shift+o once the wait is over`` () =
+    let settled, consumed = parseFinal "\x1bO"
+    Assert.Equal<InputEvent list>([ InputEvent.Key(KeyEvent.alt (Key.Char 'O')) ], settled)
+    Assert.Equal(2, consumed)
+
+[<Fact>]
+let ``a key before a trailing esc [ still comes first`` () =
+    let settled, consumed = parseFinal "a\x1b["
+
+    Assert.Equal<InputEvent list>(
+        [ InputEvent.Key(KeyEvent.plain (Key.Char 'a'))
+          InputEvent.Key(KeyEvent.alt (Key.Char '[')) ],
+        settled
+    )
+
+    Assert.Equal(3, consumed)

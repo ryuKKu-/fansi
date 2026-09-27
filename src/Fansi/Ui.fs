@@ -52,6 +52,14 @@ module Ui =
     let cross c =
         Node.mapProps (fun p -> { p with Cross = c })
 
+    // A negative edge grows the content area back over the border, or pushes the
+    // node outside the space its parent gave it.
+    let private atLeastZero (e: Edges) =
+        { Top = max 0 e.Top
+          Right = max 0 e.Right
+          Bottom = max 0 e.Bottom
+          Left = max 0 e.Left }
+
     // --- container ---
 
     let direction d =
@@ -67,14 +75,14 @@ module Ui =
         Node.mapProps (fun p -> { p with Border = b })
 
     let padding edges =
-        Node.mapProps (fun p -> { p with Padding = edges })
+        Node.mapProps (fun p -> { p with Padding = atLeastZero edges })
 
     let pad n = padding (Edges.All n)
     let padX n = padding (Edges.X n)
     let padY n = padding (Edges.Y n)
 
     let margins edges =
-        Node.mapProps (fun p -> { p with Margin = edges })
+        Node.mapProps (fun p -> { p with Margin = atLeastZero edges })
 
     let margin n = margins (Edges.All n)
     let marginX n = margins (Edges.X n)

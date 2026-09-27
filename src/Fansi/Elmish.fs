@@ -200,13 +200,25 @@ module internal Program' =
 
         run, (fun () -> lock pump stop)
 
-module internal Sub =
+/// Subscriptions for Fansi apps. Every component subscription carries an id
+/// allocated when the component was created, so map needs no prefix to keep two
+/// instances apart.
+[<RequireQualifiedAccess>]
+module Sub =
     open System
     open System.Timers
 
-    let timer (intervalMs: float) msg =
+    let none<'msg> : Sub<'msg> = []
+
+    let batch (subs: Sub<'msg> list) : Sub<'msg> = List.concat subs
+
+    let map (f: 'a -> 'msg) (sub: Sub<'a>) : Sub<'msg> =
+        sub |> List.map (fun (id, start) -> id, (fun dispatch -> start (f >> dispatch)))
+
+    /// Dispatches `msg` every `interval` for as long as the subscription is active.
+    let timer (id: string list) (interval: int<ms>) (msg: 'msg) : Sub<'msg> =
         let start dispatch =
-            let timer = new Timer(TimeSpan.FromMilliseconds(intervalMs))
+            let timer = new Timer(float (max 1 (int interval)))
             timer.Elapsed.Add(fun _ -> dispatch msg)
             timer.Start()
 
@@ -215,7 +227,7 @@ module internal Sub =
                     timer.Stop()
                     timer.Dispose() }
 
-        start
+        [ id, start ]
 
 [<RequireQualifiedAccess>]
 module Cmd =

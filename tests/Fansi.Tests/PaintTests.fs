@@ -149,3 +149,18 @@ let ``a rounded border draws its own glyphs`` () =
     let node = Ui.col [ Ui.text "x" ] |> Ui.border Rounded |> Ui.fill 1
 
     Assert.Equal<string list>([ "╭─╮"; "│x│"; "╰─╯" ], render 3 3 node)
+
+[<Fact>]
+let ``negative padding does not eat the border`` () =
+    let node = Ui.col [ Ui.text "x" ] |> Ui.border Single |> Ui.pad (-1)
+
+    Assert.Equal<string list>([ "┌─┐"; "│x│"; "└─┘" ], render 3 3 node)
+
+[<Fact>]
+let ``negative margin does not paint outside the node's space`` () =
+    let node =
+        Ui.row
+            [ Ui.col [ Ui.text "a" ] |> Ui.border Single |> Ui.margin (-1) |> Ui.len 3
+              Ui.text "b" ]
+
+    Assert.Equal<string list>([ "┌─┐b"; "│a│ "; "└─┘ " ], render 4 3 node)

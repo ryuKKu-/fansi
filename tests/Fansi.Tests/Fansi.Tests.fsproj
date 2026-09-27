@@ -19,6 +19,8 @@
     <Compile Include="ProgramTests.fs" />
     <Compile Include="KeymapTests.fs" />
     <Compile Include="FocusTests.fs" />
+    <Compile Include="SubTests.fs" />
+    <Compile Include="CursorTests.fs" />
     <Compile Include="ComponentTests.fs" />
     <None Include="paket.references" />
   </ItemGroup>

@@ -5,26 +5,14 @@ open Fansi.Core
 module Keymap =
     type Help = { Key: string; Description: string }
 
-    type KeyControl =
-        { Key: Key
-          Ctrl: bool
-          Alt: bool
-          Shift: bool }
-
-        static member plain key =
-            { Key = key
-              Ctrl = false
-              Alt = false
-              Shift = false }
-
     type KeyBind =
-        { Keys: KeyControl list
+        { Keys: KeyEvent list
           Disabled: bool
           Help: Help option }
 
         member this.Enabled = not this.Disabled && not (List.isEmpty this.Keys)
 
-        static member create keys =
+        static member create(keys: KeyEvent list) =
             { Keys = keys
               Disabled = false
               Help = None }
@@ -40,10 +28,4 @@ module Keymap =
     let setKeys keyBind keys = { keyBind with Keys = keys }
 
     let ``match`` (binding: KeyBind) (event: KeyEvent) =
-        binding.Enabled
-        && binding.Keys
-           |> List.exists (fun kc ->
-               kc.Key = event.Key
-               && kc.Ctrl = event.Ctrl
-               && kc.Alt = event.Alt
-               && kc.Shift = event.Shift)
+        binding.Enabled && List.contains event binding.Keys

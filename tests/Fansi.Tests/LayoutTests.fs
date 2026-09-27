@@ -207,5 +207,6 @@ let ``a node with saturated padding measures without wrapping`` () =
     let maxNode = Ui.col [ Ui.text "x" ] |> Ui.pad System.Int32.MaxValue
     Assert.Equal((System.Int32.MaxValue, System.Int32.MaxValue), Layout.measure maxNode 80 24)
 
+    // Negative padding clamps to zero, so this is the size of the text alone.
     let minNode = Ui.col [ Ui.text "x" ] |> Ui.pad System.Int32.MinValue
-    Assert.Equal((0, 0), Layout.measure minNode 80 24)
+    Assert.Equal((1, 1), Layout.measure minNode 80 24)

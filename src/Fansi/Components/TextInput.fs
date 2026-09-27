@@ -77,8 +77,10 @@ module VirtualCursor =
             Ui.text (string model.Char)
 
     let subscribe model =
-        [ if model.Focused && model.Type = Blink then
-              [ "cursor"; string model.Id ], Sub.timer model.BlinkSpeed (BlinkTick model.Id) ]
+        if model.Focused && model.Type = Blink then
+            Sub.timer [ "cursor"; string model.Id ] (int model.BlinkSpeed * 1<ms>) (BlinkTick model.Id)
+        else
+            Sub.none
 
 
 [<RequireQualifiedAccess>]
@@ -97,10 +99,10 @@ module TextInputComponent =
           DeleteForward: KeyBind }
 
     let defaultKeymap =
-        { CharacterForward = KeyBind.create [ KeyControl.plain Key.Right ]
-          CharacterBackward = KeyBind.create [ KeyControl.plain Key.Left ]
-          DeleteBackward = KeyBind.create [ KeyControl.plain Key.Backspace ]
-          DeleteForward = KeyBind.create [ KeyControl.plain Key.Delete ] }
+        { CharacterForward = KeyBind.create [ KeyEvent.plain Key.Right ]
+          CharacterBackward = KeyBind.create [ KeyEvent.plain Key.Left ]
+          DeleteBackward = KeyBind.create [ KeyEvent.plain Key.Backspace ]
+          DeleteForward = KeyBind.create [ KeyEvent.plain Key.Delete ] }
 
     type Model =
         { Focused: bool
@@ -213,9 +215,9 @@ module TextInputComponent =
 
     let subscribe model =
         if model.Focused then
-            Sub.map "input" CursorMsg (VirtualCursor.subscribe model.Cursor)
+            VirtualCursor.subscribe model.Cursor |> Sub.map CursorMsg
         else
-            []
+            Sub.none
 
     let view model : Node =
         let value = model.Value.ToString()

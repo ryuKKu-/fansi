@@ -371,5 +371,14 @@ module InputParser =
                       Shift = false }
 
             events @ [ altEscape ], buffer.Length
+        elif
+            consumed = buffer.Length - 2
+            && buffer[consumed] = 0x1buy
+            && (buffer[consumed + 1] = byte '[' || buffer[consumed + 1] = byte 'O')
+        then
+            // Nothing followed, so no sequence was starting. The terminal sends
+            // Alt+key as ESC then the key, and these two keys happen to be the
+            // bytes that open a sequence.
+            events @ [ InputEvent.Key(KeyEvent.alt (Key.Char(char buffer[consumed + 1]))) ], buffer.Length
         else
             events, consumed

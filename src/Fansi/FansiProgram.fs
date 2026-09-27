@@ -472,9 +472,9 @@ module FansiProgram =
     /// Subscriptions are started and disposed while the program holds its message
     /// lock. A Dispose that waits for the subscription's own dispatching thread to
     /// finish therefore deadlocks.
-    let withSubscription subscribe (p: FansiProgram<'model, 'msg>) =
+    let withSubscription (subscribe: 'model -> Sub<'msg>) (p: FansiProgram<'model, 'msg>) =
         { p with
-            program = Program.withSubscription subscribe p.program }
+            program = Program.withSubscription (subscribe >> Sub.map App) p.program }
 
     let run (p: FansiProgram<'model, 'msg>) =
         let renderer = Renderer(p.fps)

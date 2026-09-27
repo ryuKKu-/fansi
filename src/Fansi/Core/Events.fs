@@ -31,6 +31,10 @@ type KeyEvent =
           Alt = false
           Shift = false }
 
+    static member ctrl key = { KeyEvent.plain key with Ctrl = true }
+
+    static member alt key = { KeyEvent.plain key with Alt = true }
+
 [<RequireQualifiedAccess>]
 type MouseButton =
     | Left

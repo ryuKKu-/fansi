@@ -15,3 +15,11 @@ type FansiMsg<'appMsg> =
     | Resize of width: int * height: int
     | FocusChanged of bool
     | App of 'appMsg
+
+/// Ids for components that own a subscription. Allocated once per instance, so two
+/// instances of the same component never share a subscription key.
+module internal ComponentId =
+    let mutable private last = 0L
+
+    let next () =
+        System.Threading.Interlocked.Increment(&last)

@@ -47,7 +47,7 @@ module SpinnerComponent =
             Cmd.none
 
     let subscribe model =
-        [ [ "spinner" ], Sub.timer model.Interval Tick ]
+        Sub.timer [ "fansi"; "spinner" ] (int model.Interval * 1<ms>) Tick
 
     let view model : Node =
         let frame = model.Frames[model.Frame]
