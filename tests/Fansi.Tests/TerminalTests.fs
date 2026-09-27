@@ -158,3 +158,16 @@ let ``entering raw mode without a console changes nothing and still disposes`` (
     if Console.IsInputRedirected then
         use _scope = Terminal.enterRawMode ()
         Assert.False(Terminal.isRaw ())
+
+[<Fact>]
+let ``the leave action runs once however many times the terminal is released`` () =
+    // guarded for the same reason as the test above
+    if Console.IsInputRedirected then
+        let mutable left = 0
+        let scope = Terminal.enterRawModeWith (fun () -> left <- left + 1)
+        Assert.Equal(0, left)
+
+        scope.Dispose()
+        scope.Dispose()
+
+        Assert.Equal(1, left)

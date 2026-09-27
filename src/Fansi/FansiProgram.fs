@@ -2,9 +2,11 @@ namespace Fansi
 
 open Elmish
 open System
+open System.IO
 open Fansi
 open Fansi.Core
 open Fansi.Renderer
+open Microsoft.Win32.SafeHandles
 open System.Runtime.ExceptionServices
 open System.Runtime.InteropServices
 open System.Text
@@ -12,7 +14,7 @@ open System.Threading
 open System.Threading.Tasks
 
 type private InternalProgram<'model, 'msg>
-    (renderer: Renderer, program: Program<unit, 'model, FansiMsg<'msg>, Node>, mouseEnabled: bool, quitOnCtrlC: bool) =
+    (renderer: Renderer, program: Program<unit, 'model, FansiMsg<'msg>, Node>, quitOnCtrlC: bool, escapeTimeout: int) =
     let mutable dispatch = ignore<FansiMsg<'msg>>
     let mutable oldModel: 'model option = None
     let mutable viewTree = Ui.empty
@@ -24,9 +26,15 @@ type private InternalProgram<'model, 'msg>
     [<VolatileField>]
     let mutable quit = false
 
-    // Written by the reader thread, read by Run once the quit signal arrives.
-    [<VolatileField>]
-    let mutable readerError: exn option = None
+    // The first exception that ended the program, from the reader or from update
+    // on whichever thread. Run rethrows it once the quit signal arrives.
+    let mutable failure: exn option = None
+    let failureGate = obj ()
+
+    // Set when a Resize is dispatched, cleared by the repaint it forces. An app
+    // whose update returns the same model for a Resize still needs a new frame at
+    // the new size.
+    let mutable resized = false
 
     // What Run waits on. A read of stdin cannot be cancelled, so anything waiting
     // on the reader cannot be woken by a quit that came from somewhere else.
@@ -56,16 +64,15 @@ type private InternalProgram<'model, 'msg>
 
     let shouldRender oldModel newModel = not <| equal oldModel newModel
 
-    let escapeTimeout = 50
-
     // A tail that is not a paste is given up on after three escape timeouts, 150
-    // ms: far longer than a terminal takes to send the rest of a sequence, far
-    // shorter than a person notices.
+    // ms at the default: far longer than a terminal takes to send the rest of a
+    // sequence, far shorter than a person notices.
     let shortTailTimeouts = 3
 
     // A paste gets two seconds of silence before its text is handed over without
-    // its framing. Long enough that a slow link never chops one in half.
-    let stalledPasteTimeouts = 40
+    // its framing. Long enough that a slow link never chops one in half. Counted in
+    // time rather than in timeouts, so a longer escape timeout does not stretch it.
+    let stalledPasteTimeouts = max 1 (2000 / escapeTimeout)
 
     // How much of a paste the reader holds before handing over a chunk of it. Big
     // enough that a pasted file, log or certificate still arrives as one Paste,
@@ -122,10 +129,26 @@ type private InternalProgram<'model, 'msg>
         else
             None
 
+    /// On Unix, Console.OpenStandardInput on a terminal goes through .NET's own line
+    /// editor: it echoes, waits for Enter and rewrites termios around every read.
+    /// Reading fd 0 directly gets the bytes as they are typed. Windows in raw mode
+    /// with virtual-terminal input already does.
+    let openInput () : Stream =
+        if RuntimeInformation.IsOSPlatform OSPlatform.Windows then
+            Console.OpenStandardInput()
+        else
+            // bufferSize 0: no buffering of our own on top of the reads
+            new FileStream(new SafeFileHandle(0n, false), FileAccess.Read, 0)
+
+    let recordFailure ex =
+        lock failureGate (fun () ->
+            if failure.IsNone then
+                failure <- Some ex)
+
     let readInput () =
         task {
-            let stdin = Console.OpenStandardInput()
-            let chunk = Array.zeroCreate<byte> 1024
+            let stdin = openInput ()
+            let chunk = Array.zeroCreate<byte> (64 * 1024)
             // Whatever the parser could not finish. Carrying it forward is what
             // makes a sequence or a paste split across reads arrive whole.
             let mutable pending = Array.empty<byte>
@@ -258,7 +281,10 @@ type private InternalProgram<'model, 'msg>
                 try
                     (readInput ()).GetAwaiter().GetResult()
                 with ex ->
-                    readerError <- Some ex
+                    recordFailure ex
+                    // Subscriptions and timers would otherwise keep calling update
+                    // after run has thrown.
+                    stopProgram ()
             finally
                 // However the reader ends, Run has to stop waiting for it.
                 stopped.TrySetResult() |> ignore
@@ -280,19 +306,23 @@ type private InternalProgram<'model, 'msg>
     let watchResize () =
         let mutable lastW = 0
         let mutable lastH = 0
+        let gate = obj ()
+
+        let readSize () =
+            try
+                Some(Console.WindowWidth, Console.WindowHeight)
+            with _ ->
+                // No console attached. Nothing to watch.
+                None
 
         let check () =
-            try
-                let w = Console.WindowWidth
-                let h = Console.WindowHeight
-
-                if w <> lastW || h <> lastH then
+            lock gate (fun () ->
+                match readSize () with
+                | Some(w, h) when w <> lastW || h <> lastH ->
                     lastW <- w
                     lastH <- h
                     dispatch (Resize(w, h))
-            with _ ->
-                // No console attached. Nothing to watch.
-                ()
+                | _ -> ())
 
         // Starting from zero means the first check always dispatches. That is on
         // purpose: an app learns its size right after the first paint.
@@ -318,6 +348,15 @@ type private InternalProgram<'model, 'msg>
             let setDispatch d = dispatch <- d
             let quitToken = QuitToken.install ()
 
+            // Runs inside the pump, just before update, so the flag and the repaint
+            // it forces belong to the same message.
+            let noteResize update msg model =
+                match msg with
+                | Resize _ -> resized <- true
+                | _ -> ()
+
+                update msg model
+
             p <-
                 program
                 |> Program.withTermination (fun _ -> quitToken.Requested) (fun _ -> ())
@@ -325,7 +364,7 @@ type private InternalProgram<'model, 'msg>
                     (fun init arg ->
                         let model, cmd = init arg
                         model, setDispatch :: cmd)
-                    id
+                    noteResize
                     id
                     (fun _ model dispatch -> setState model dispatch)
                     id
@@ -336,14 +375,13 @@ type private InternalProgram<'model, 'msg>
                             quit <- true
                             stopped.TrySetResult() |> ignore))
 
-            let start, stop = Program'.runFirstRender () p
-            runProgramLoop <- start
-            stopProgram <- stop
-
             setState <-
                 fun model dispatch ->
+                    let repaint = resized
+                    resized <- false
+
                     match oldModel with
-                    | Some old when shouldRender old model ->
+                    | Some old when repaint || shouldRender old model ->
                         viewTree <- Program.view p model dispatch
                         oldModel <- Some model
                         renderView viewTree
@@ -353,7 +391,17 @@ type private InternalProgram<'model, 'msg>
                         renderView viewTree
                     | _ -> ()
 
+            // Wherever update throws, the program stops and Run rethrows the
+            // exception below, on the caller's thread.
+            let onCrash ex =
+                recordFailure ex
+                stopProgram ()
+
             try
+                let start, stop = Program'.runFirstRender onCrash () p
+                runProgramLoop <- start
+                stopProgram <- stop
+
                 runProgramLoop ()
 
                 // Paints the first frame. runFirstRender calls setState while it is
@@ -371,7 +419,7 @@ type private InternalProgram<'model, 'msg>
             finally
                 renderer.Stop()
 
-            match readerError with
+            match failure with
             | Some ex -> ExceptionDispatchInfo.Capture(ex).Throw()
             | None -> ()
         }
@@ -384,7 +432,8 @@ module FansiProgram =
             { program: Program<unit, 'model, FansiMsg<'msg>, Node>
               fps: int<FPS>
               mouseEnabled: bool
-              quitOnCtrlC: bool }
+              quitOnCtrlC: bool
+              escapeTimeout: int<ms> }
 
     let mkProgram
         (init: unit -> 'model * Cmd<'msg>)
@@ -400,7 +449,8 @@ module FansiProgram =
                 view model)
           fps = 60<FPS>
           mouseEnabled = false
-          quitOnCtrlC = true }
+          quitOnCtrlC = true
+          escapeTimeout = 50<ms> }
 
     let withFps fps (p: FansiProgram<'model, 'msg>) = { p with fps = fps }
 
@@ -411,13 +461,42 @@ module FansiProgram =
     /// takes the job of leaving.
     let withoutQuitOnCtrlC (p: FansiProgram<'model, 'msg>) = { p with quitOnCtrlC = false }
 
+    /// How long a lone Esc waits for the rest of a sequence before it counts as the
+    /// Esc key. The default, 50 ms, suits a local terminal. Over a slow link such as
+    /// SSH, arrow keys can arrive split and read as Esc plus letters; a longer
+    /// timeout fixes that at the cost of a slower Esc.
+    let withEscapeTimeout (timeout: int<ms>) (p: FansiProgram<'model, 'msg>) =
+        { p with
+            escapeTimeout = max 1<ms> timeout }
+
+    /// Subscriptions are started and disposed while the program holds its message
+    /// lock. A Dispose that waits for the subscription's own dispatching thread to
+    /// finish therefore deadlocks.
     let withSubscription subscribe (p: FansiProgram<'model, 'msg>) =
         { p with
             program = Program.withSubscription subscribe p.program }
 
     let run (p: FansiProgram<'model, 'msg>) =
         let renderer = Renderer(p.fps)
-        use _raw = Terminal.enterRawMode ()
+
+        let teardown =
+            String.concat
+                ""
+                [ if p.mouseEnabled then
+                      AnsiSequence.disableMouseTracking
+                  AnsiSequence.disableFocusReporting
+                  AnsiSequence.disableBracketedPaste
+                  AnsiSequence.showCursor
+                  AnsiSequence.disableAltScreenBuffer ]
+
+        // Runs once on every way out, including a plain kill, and before the
+        // terminal modes go back. Mouse tracking left on would type a report into
+        // the shell on every mouse move.
+        let leave () =
+            renderer.Stop()
+            renderer.Execute teardown
+
+        use _terminal = Terminal.enterRawModeWith leave
 
         renderer.Execute(AnsiSequence.enableAltScreenBuffer)
         renderer.Execute(AnsiSequence.hideCursor)
@@ -429,15 +508,7 @@ module FansiProgram =
 
         renderer.Start()
 
-        let program = InternalProgram(renderer, p.program, p.mouseEnabled, p.quitOnCtrlC)
+        let program =
+            InternalProgram(renderer, p.program, p.quitOnCtrlC, int p.escapeTimeout)
 
-        try
-            do program.Run() |> Async.AwaitTask |> Async.RunSynchronously
-        finally
-            if p.mouseEnabled then
-                renderer.Execute(AnsiSequence.disableMouseTracking)
-
-            renderer.Execute(AnsiSequence.disableFocusReporting)
-            renderer.Execute(AnsiSequence.disableBracketedPaste)
-            renderer.Execute(AnsiSequence.showCursor)
-            renderer.Execute(AnsiSequence.disableAltScreenBuffer)
+        program.Run() |> Async.AwaitTask |> Async.RunSynchronously

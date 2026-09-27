@@ -206,17 +206,23 @@ module InputParser =
 
             let mutable i = 2
             let mutable finalAt = -1
+            let mutable escAt = -1
 
-            while finalAt < 0 && i < buffer.Length do
+            while finalAt < 0 && escAt < 0 && i < buffer.Length do
                 let b = buffer[i]
 
                 if b >= 0x40uy && b <= 0x7euy then
                     finalAt <- i
+                elif b = 0x1buy then
+                    // No final byte of its own before the next sequence starts.
+                    // The sequence so far is malformed: stop here instead of
+                    // scanning through the ESC that begins the next one.
+                    escAt <- i
                 else
                     i <- i + 1
 
             if finalAt < 0 then
-                Incomplete
+                if escAt < 0 then Incomplete else Skipped escAt
             else
                 let final = char buffer[finalAt]
                 let parameterText = Encoding.ASCII.GetString(buffer.Slice(2, finalAt - 2))
@@ -232,10 +238,22 @@ module InputParser =
                 let first = if parameters.Length > 0 then parameters[0] else 0
                 let consumed = finalAt + 1
 
-                match letterKey final, tildeKey first with
-                | Some k, _ -> Emitted([ withModifiers modifier k ], consumed)
-                | _, Some k when final = '~' -> Emitted([ withModifiers modifier k ], consumed)
-                | _ -> Skipped consumed
+                if final = 'Z' then
+                    // Shift+Tab. The shift comes from the letter itself; there is
+                    // no modifier parameter to read it from.
+                    Emitted(
+                        [ InputEvent.Key
+                              { Key = Key.Tab
+                                Ctrl = false
+                                Alt = false
+                                Shift = true } ],
+                        consumed
+                    )
+                else
+                    match letterKey final, tildeKey first with
+                    | Some k, _ -> Emitted([ withModifiers modifier k ], consumed)
+                    | _, Some k when final = '~' -> Emitted([ withModifiers modifier k ], consumed)
+                    | _ -> Skipped consumed
 
     /// SS3: ESC O then one byte. Only the first four function keys use it.
     let private ss3 (buffer: ReadOnlySpan<byte>) =
@@ -247,7 +265,13 @@ module InputParser =
             | 'Q' -> Emitted([ key (Key.F 2) ], 3)
             | 'R' -> Emitted([ key (Key.F 3) ], 3)
             | 'S' -> Emitted([ key (Key.F 4) ], 3)
-            | _ -> Skipped 3
+            | c ->
+                // Application cursor mode sends arrows and Home/End through SS3
+                // too, not only the four function keys, so fall back to the same
+                // table CSI uses.
+                match letterKey c with
+                | Some k -> Emitted([ key k ], 3)
+                | None -> Skipped 3
 
     /// Applies Alt to every key in a step's result, and accounts for the ESC byte
     /// that step didn't see.
@@ -274,13 +298,27 @@ module InputParser =
             | '[' -> csi buffer
             | 'O' -> ss3 buffer
             | _ ->
-                // Same control-or-text choice step makes, but not step itself: that
-                // would recurse on a second ESC instead of treating it as Alt+Esc.
                 let b = buffer[1]
 
-                if b = 0x1buy then withAlt (Emitted([ key Key.Esc ], 1))
-                elif b < 0x20uy || b = 0x7fuy then withAlt (control b)
-                else withAlt (text (buffer.Slice 1))
+                if b = 0x1buy && buffer.Length = 2 then
+                    // A second ESC with nothing after it yet. It might still turn
+                    // out to start a sequence once its "[" or "O" arrives, so wait
+                    // for it the same way a lone ESC does.
+                    Incomplete
+                elif b = 0x1buy && (char buffer[2] = '[' || char buffer[2] = 'O') then
+                    // The second ESC isn't a keypress of its own: it's the next
+                    // sequence arriving hot on Escape's heels. Emit a plain Escape
+                    // for the first byte and let the next step read what follows.
+                    Emitted([ key Key.Esc ], 1)
+                elif b = 0x1buy then
+                    // Same control-or-text choice step makes, but not step itself:
+                    // that would recurse on a second ESC instead of treating it as
+                    // Alt+Esc.
+                    withAlt (Emitted([ key Key.Esc ], 1))
+                elif b < 0x20uy || b = 0x7fuy then
+                    withAlt (control b)
+                else
+                    withAlt (text (buffer.Slice 1))
 
     let private step (buffer: ReadOnlySpan<byte>) =
         let b = buffer[0]
@@ -318,5 +356,20 @@ module InputParser =
 
         if consumed = buffer.Length - 1 && buffer[consumed] = 0x1buy then
             events @ [ key Key.Esc ], buffer.Length
+        elif
+            consumed = buffer.Length - 2
+            && buffer[consumed] = 0x1buy
+            && buffer[consumed + 1] = 0x1buy
+        then
+            // Nothing arrived to say what the second ESC was starting, so it
+            // never was: settle it as Escape with Alt, since two arrived.
+            let altEscape =
+                InputEvent.Key
+                    { Key = Key.Esc
+                      Ctrl = false
+                      Alt = true
+                      Shift = false }
+
+            events @ [ altEscape ], buffer.Length
         else
             events, consumed

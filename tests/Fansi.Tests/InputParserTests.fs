@@ -216,8 +216,15 @@ let ``escape then a control byte is alt on that key, not a character`` () =
     )
 
 [<Fact>]
-let ``two escapes in one read is alt-escape, not a raw control character`` () =
-    let events, consumed = parseBytes [ 0x1buy; 0x1buy ]
+let ``two escapes with nothing after them yet wait, then settle as alt-escape`` () =
+    // the second ESC could still turn out to start a sequence once its "[" or
+    // "O" arrives, so parse must wait on it exactly as it waits on a lone ESC
+    let waiting, consumed = parseBytes [ 0x1buy; 0x1buy ]
+    Assert.Empty(waiting)
+    Assert.Equal(0, consumed)
+
+    let settled, consumedFinal =
+        InputParser.parseFinal (ReadOnlySpan(Array.ofList [ 0x1buy; 0x1buy ]))
 
     Assert.Equal<InputEvent list>(
         [ InputEvent.Key
@@ -225,10 +232,52 @@ let ``two escapes in one read is alt-escape, not a raw control character`` () =
                 Ctrl = false
                 Alt = true
                 Shift = false } ],
+        settled
+    )
+
+    Assert.Equal(2, consumedFinal)
+
+[<Fact>]
+let ``escape immediately followed by an arrow key gives escape, then the arrow`` () =
+    let events, consumed = parse "\x1b\x1b[A"
+
+    Assert.Equal<InputEvent list>(
+        [ InputEvent.Key(KeyEvent.plain Key.Esc)
+          InputEvent.Key(KeyEvent.plain Key.Up) ],
         events
     )
 
-    Assert.Equal(2, consumed)
+    Assert.Equal(4, consumed)
+
+[<Fact>]
+let ``escape immediately followed by a mouse report gives escape, then the mouse event`` () =
+    let events, _ = parse "\x1b\x1b[<35;1;1M"
+
+    match events with
+    | [ InputEvent.Key k; InputEvent.Mouse _ ] -> Assert.Equal(Key.Esc, k.Key)
+    | other -> failwith $"expected escape then a mouse event, got %A{other}"
+
+[<Fact>]
+let ``escape immediately followed by a paste gives escape, then the paste`` () =
+    let events, _ = parse "\x1b\x1b[200~x\x1b[201~"
+
+    Assert.Equal<InputEvent list>([ InputEvent.Key(KeyEvent.plain Key.Esc); InputEvent.Paste "x" ], events)
+
+[<Fact>]
+let ``two escapes followed by a plain letter still gives alt-escape then the letter`` () =
+    let events, consumed = parse "\x1b\x1bf"
+
+    Assert.Equal<InputEvent list>(
+        [ InputEvent.Key
+              { Key = Key.Esc
+                Ctrl = false
+                Alt = true
+                Shift = false }
+          InputEvent.Key(KeyEvent.plain (Key.Char 'f')) ],
+        events
+    )
+
+    Assert.Equal(3, consumed)
 
 [<Fact>]
 let ``escape then an orphan continuation byte is dropped, both bytes consumed`` () =
@@ -343,3 +392,38 @@ let ``a paste body that is not valid utf-8 still consumes exactly the whole past
 let ``focus in and out decode`` () =
     let events, _ = parse "\x1b[I\x1b[O"
     Assert.Equal<InputEvent list>([ InputEvent.FocusChanged true; InputEvent.FocusChanged false ], events)
+
+[<Fact>]
+let ``ss3 arrow and home/end keys decode, not just the function keys`` () =
+    // application cursor mode sends arrows and Home/End through SS3, not CSI
+    let events, _ = parse "\x1bOA\x1bOD\x1bOH\x1bOF"
+
+    Assert.Equal<InputEvent list>(
+        [ InputEvent.Key(KeyEvent.plain Key.Up)
+          InputEvent.Key(KeyEvent.plain Key.Left)
+          InputEvent.Key(KeyEvent.plain Key.Home)
+          InputEvent.Key(KeyEvent.plain Key.End) ],
+        events
+    )
+
+[<Fact>]
+let ``shift+tab decodes as tab with shift`` () =
+    let events, _ = parse "\x1b[Z"
+
+    Assert.Equal<InputEvent list>(
+        [ InputEvent.Key
+              { Key = Key.Tab
+                Ctrl = false
+                Alt = false
+                Shift = true } ],
+        events
+    )
+
+[<Fact>]
+let ``a malformed csi ending in another escape loses nothing after it`` () =
+    // ESC [ 1 never gets a final byte before the next ESC starts; the malformed
+    // prefix is skipped and the arrow key that follows still comes through
+    let events, consumed = parse "\x1b[1\x1b[A"
+
+    Assert.Equal<InputEvent list>([ InputEvent.Key(KeyEvent.plain Key.Up) ], events)
+    Assert.Equal(6, consumed)

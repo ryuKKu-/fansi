@@ -11,6 +11,12 @@ module AnsiSequence =
     [<Literal>]
     let clearScreen = "\x1b[2J\x1b[3J\x1b[1;1H"
 
+    /// Erases what is visible and homes the cursor, and nothing more. clearScreen's
+    /// ESC[3J also wipes scrollback, and some terminals apply it to the main
+    /// screen's history even from the alternate screen.
+    [<Literal>]
+    let eraseVisibleScreen = "\x1b[2J\x1b[1;1H"
+
     [<Literal>]
     let enableAltScreenBuffer = "\x1b[?1049h"
 
@@ -128,65 +134,80 @@ module Renderer =
         let mutable currentBuffer = Buffer.create 0 0
         let mutable previousBuffer = Buffer.create 0 0
         let mutable dirty = false
+        // Set when the size changes after something is on screen. The new frame is
+        // diffed against a blank buffer, so any cell it leaves blank would keep
+        // whatever the old frame had there.
+        let mutable eraseFirst = false
+        let mutable painted = false
+        // A timer tick can still arrive after Stop. Past this point nothing may
+        // paint, because the caller is about to leave the alternate screen.
+        let mutable stopped = false
 
         new(fps: int<FPS>) = Renderer(fps, Console.Out)
 
         member this.Flush() =
             lock this (fun () ->
-                if not dirty then
+                if stopped || not dirty then
                     ()
                 else
                     dirty <- false
                     let w = currentBuffer.Width
                     let h = currentBuffer.Height
+                    let sb = StringBuilder()
+                    let mutable lastStyle = Style.Default
+                    let mutable cursorX = -1
+                    let mutable cursorY = -1
 
-                    if w = 0 || h = 0 then
-                        ()
-                    else
-                        let sb = StringBuilder()
-                        let mutable lastStyle = Style.Default
-                        let mutable cursorX = -1
-                        let mutable cursorY = -1
+                    // In the same write as the redraw, so the screen never shows
+                    // blank between the two.
+                    if eraseFirst then
+                        eraseFirst <- false
+                        sb.Append(AnsiSequence.eraseVisibleScreen) |> ignore
+                        cursorX <- 0
+                        cursorY <- 0
 
-                        for y in 0 .. h - 1 do
-                            let mutable x = 0
+                    for y in 0 .. h - 1 do
+                        let mutable x = 0
 
-                            while x < w do
-                                let cur = Buffer.get currentBuffer x y
-                                let prev = Buffer.get previousBuffer x y
+                        while x < w do
+                            let cur = Buffer.get currentBuffer x y
+                            let prev = Buffer.get previousBuffer x y
 
-                                if cur <> prev then
-                                    if cursorX <> x || cursorY <> y then
-                                        sb.Append(AnsiSequence.moveCursorTo x y) |> ignore
-                                        cursorX <- x
-                                        cursorY <- y
+                            if cur <> prev then
+                                if cursorX <> x || cursorY <> y then
+                                    sb.Append(AnsiSequence.moveCursorTo x y) |> ignore
+                                    cursorX <- x
+                                    cursorY <- y
 
-                                    let mutable runEnd = x
+                                let mutable runEnd = x
 
-                                    while runEnd < w
-                                          && Buffer.get currentBuffer runEnd y <> Buffer.get previousBuffer runEnd y do
-                                        runEnd <- runEnd + 1
+                                while runEnd < w
+                                      && Buffer.get currentBuffer runEnd y <> Buffer.get previousBuffer runEnd y do
+                                    runEnd <- runEnd + 1
 
-                                    for rx in x .. runEnd - 1 do
-                                        let cell = Buffer.get currentBuffer rx y
+                                for rx in x .. runEnd - 1 do
+                                    let cell = Buffer.get currentBuffer rx y
 
-                                        if cell.Style <> lastStyle then
-                                            sb.Append(AnsiSequence.applyStyle cell.Style) |> ignore
-                                            lastStyle <- cell.Style
+                                    if cell.Style <> lastStyle then
+                                        sb.Append(AnsiSequence.applyStyle cell.Style) |> ignore
+                                        lastStyle <- cell.Style
 
-                                        sb.Append(cell.Char) |> ignore
+                                    sb.Append(cell.Char) |> ignore
 
-                                    cursorX <- runEnd
-                                    x <- runEnd
-                                else
-                                    x <- x + 1
+                                cursorX <- runEnd
+                                x <- runEnd
+                            else
+                                x <- x + 1
 
-                        if sb.Length > 0 then
-                            sb.Append(AnsiSequence.resetStyle) |> ignore
-                            out.Write(sb.ToString())
-                            out.Flush()
+                    if sb.Length > 0 then
+                        sb.Append(AnsiSequence.resetStyle) |> ignore
+                        out.Write(sb.ToString())
+                        out.Flush()
 
-                        previousBuffer <- currentBuffer)
+                    if w > 0 && h > 0 then
+                        painted <- true
+
+                    previousBuffer <- currentBuffer)
 
         member this.Start() =
             if not ticker.Enabled then
@@ -201,15 +222,21 @@ module Renderer =
             lock this (fun () ->
                 if buffer.Width <> previousBuffer.Width || buffer.Height <> previousBuffer.Height then
                     previousBuffer <- Buffer.create buffer.Width buffer.Height
+                    eraseFirst <- eraseFirst || painted
 
                 currentBuffer <- buffer
                 dirty <- true)
 
+        /// Paints what is still pending, then stops for good.
         member this.Stop() =
             if ticker.Enabled then
-                this.Flush()
                 ticker.Stop()
 
+                lock this (fun () ->
+                    this.Flush()
+                    stopped <- true)
+
         member this.Execute(str: string) =
-            out.Write str
-            out.Flush()
+            lock this (fun () ->
+                out.Write str
+                out.Flush())

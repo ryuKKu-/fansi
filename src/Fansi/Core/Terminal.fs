@@ -55,6 +55,12 @@ module Terminal =
         [<DllImport("kernel32.dll", SetLastError = true)>]
         extern bool private SetConsoleMode(nativeint hConsoleHandle, uint32 dwMode)
 
+        [<DllImport("kernel32.dll", SetLastError = true)>]
+        extern uint32 private GetConsoleCP()
+
+        [<DllImport("kernel32.dll", SetLastError = true)>]
+        extern bool private SetConsoleCP(uint32 wCodePageID)
+
         let internal stdIn () = GetStdHandle(-10)
         let internal stdOut () = GetStdHandle(-11)
 
@@ -63,6 +69,14 @@ module Terminal =
             if GetConsoleMode(handle, &mode) then Some mode else None
 
         let internal setMode (handle: nativeint) (mode: uint32) = SetConsoleMode(handle, mode)
+
+        [<Literal>]
+        let Utf8CodePage = 65001u
+
+        /// Zero means the call failed.
+        let internal inputCodePage () = GetConsoleCP()
+
+        let internal setInputCodePage (codePage: uint32) = SetConsoleCP codePage
 
     module Unix =
 
@@ -223,6 +237,7 @@ module Terminal =
         | None -> None
         | Some originalIn ->
             let originalOut = Windows.tryGetMode output
+            let originalCodePage = Windows.inputCodePage ()
 
             // the input handle carries echo and line input, so it is the one whose
             // restore decides whether the terminal is back
@@ -232,6 +247,9 @@ module Terminal =
                 match originalOut with
                 | Some mode -> Windows.setMode output mode |> ignore
                 | None -> ()
+
+                if originalCodePage <> 0u then
+                    Windows.setInputCodePage originalCodePage |> ignore
 
                 back
 
@@ -248,6 +266,12 @@ module Terminal =
                 | true, Some mode -> Windows.setMode output (Windows.vtOutputMode mode) |> ignore
                 | _ -> ()
 
+                // The input stream reads bytes in the console's input code page, which
+                // is OEM 850 or 437 by default. The parser expects UTF-8, so without
+                // this every accented letter arrives as a stray byte and is dropped.
+                if entered then
+                    Windows.setInputCodePage Windows.Utf8CodePage |> ignore
+
                 entered
 
             Some { Restore = restore; Apply = apply }
@@ -258,81 +282,130 @@ module Terminal =
 
         if not (Unix.ownsTerminal ()) then
             None
-        elif not (Unix.getAttr original) then
+        else
+            // .NET sets up its console on the first console call. It then snapshots
+            // termios and writes that snapshot back at exit. Left to happen on the
+            // first frame, after raw mode is on, it would snapshot raw mode and put
+            // it back after we restore, leaving the shell without echo. Triggering it
+            // here makes it snapshot cooked mode instead.
+            Console.TreatControlCAsInput |> ignore
+
+            if not (Unix.getAttr original) then
+                None
+            else
+                let isMacOs = RuntimeInformation.IsOSPlatform OSPlatform.OSX
+                let working = Array.copy original
+                Unix.applyRawFlags (Unix.flagsFor isMacOs) (Unix.layoutFor isMacOs) working
+
+                Some
+                    { Restore = fun () -> Unix.setAttr original
+                      Apply = fun () -> Unix.setAttr working }
+
+    let private tryPrepare () =
+        if raw || Console.IsInputRedirected then
             None
         else
-            let isMacOs = RuntimeInformation.IsOSPlatform OSPlatform.OSX
-            let working = Array.copy original
-            Unix.applyRawFlags (Unix.flagsFor isMacOs) (Unix.layoutFor isMacOs) working
+            try
+                if RuntimeInformation.IsOSPlatform OSPlatform.Windows then
+                    prepareWindows ()
+                else
+                    prepareUnix ()
+            with _ ->
+                None
 
-            Some
-                { Restore = fun () -> Unix.setAttr original
-                  Apply = fun () -> Unix.setAttr working }
+    /// The keyboard cannot send these while raw mode is on, but another process can.
+    /// Their default action ends the process without running ProcessExit.
+    let private signalsFromElsewhere = [ PosixSignal.SIGINT; PosixSignal.SIGQUIT ]
+
+    /// Put the terminal into raw mode, and run `leave` once on the way out, just
+    /// before the terminal modes go back. Disposing the result does both.
+    ///
+    /// Both are also hooked to process exit, to an unhandled exception, and to
+    /// SIGINT and SIGQUIT sent from elsewhere, so a plain `kill` restores as much as
+    /// a normal exit does. `leave` is for what the caller switched on itself, such as
+    /// the alternate screen or mouse reporting. It runs even when raw mode could not
+    /// be entered, because the caller's own modes are on either way.
+    let enterRawModeWith (leave: unit -> unit) : IDisposable =
+        let prepared = tryPrepare ()
+
+        // ProcessExit, UnhandledException and the signals fire on other threads, so
+        // two callers can reach these at once
+        let restored = ref 0
+        let left = ref 0
+
+        // a restore the driver refuses leaves the terminal raw, so the flag has to
+        // stay true for it
+        let restoreModes () =
+            match prepared with
+            | Some entry when Interlocked.Exchange(&restored.contents, 1) = 0 -> raw <- not (entry.Restore())
+            | _ -> ()
+
+        let leaveOnce () =
+            if Interlocked.Exchange(&left.contents, 1) = 0 then
+                // Leave first: on Windows the restore can turn VT output off again,
+                // and the caller's escapes would then print as text.
+                try
+                    leave ()
+                finally
+                    restoreModes ()
+
+        // a hook must never throw: it runs inside the runtime's exit or signal path
+        let quietly () =
+            try
+                leaveOnce ()
+            with _ ->
+                ()
+
+        let onExit = EventHandler(fun _ _ -> quietly ())
+        let onCrash = UnhandledExceptionEventHandler(fun _ _ -> quietly ())
+
+        AppDomain.CurrentDomain.ProcessExit.AddHandler onExit
+        AppDomain.CurrentDomain.UnhandledException.AddHandler onCrash
+
+        // The handler does not cancel the signal, so its default action still ends
+        // the process once the terminal is back.
+        let signals =
+            signalsFromElsewhere
+            |> List.choose (fun signal ->
+                try
+                    Some(PosixSignalRegistration.Create(signal, (fun _ -> quietly ())))
+                with _ ->
+                    None)
+
+        // a long-running program that enters and leaves raw mode repeatedly would
+        // otherwise pile up a set of handlers per call
+        let unhook () =
+            AppDomain.CurrentDomain.ProcessExit.RemoveHandler onExit
+            AppDomain.CurrentDomain.UnhandledException.RemoveHandler onCrash
+            signals |> List.iter (fun registration -> registration.Dispose())
+
+        match prepared with
+        | None -> ()
+        | Some entry ->
+            let entered =
+                try
+                    entry.Apply()
+                with _ ->
+                    false
+
+            if entered then
+                raw <- true
+            else
+                // the restore here undoes at most a part-applied entry, so its result
+                // must not be allowed to mark the terminal raw
+                try
+                    restoreModes ()
+                with _ ->
+                    ()
+
+                raw <- false
+
+        { new IDisposable with
+            member _.Dispose() =
+                try
+                    leaveOnce ()
+                finally
+                    unhook () }
 
     /// Put the terminal into raw mode. Disposing the result restores it.
-    ///
-    /// The restore is also hooked to process exit and to an unhandled exception, not
-    /// only to the returned disposable.
-    let enterRawMode () : IDisposable =
-        if raw || Console.IsInputRedirected then
-            noop
-        else
-            let prepared =
-                try
-                    if RuntimeInformation.IsOSPlatform OSPlatform.Windows then
-                        prepareWindows ()
-                    else
-                        prepareUnix ()
-                with _ ->
-                    None
-
-            match prepared with
-            | None -> noop
-            | Some entry ->
-                // ProcessExit and UnhandledException fire on other threads, so two
-                // callers can reach the restore at once
-                let restored = ref 0
-
-                // a restore the driver refuses leaves the terminal raw, so the flag
-                // has to stay true for it
-                let restoreOnce () =
-                    if Interlocked.Exchange(&restored.contents, 1) = 0 then
-                        raw <- not (entry.Restore())
-
-                let onExit = EventHandler(fun _ _ -> restoreOnce ())
-                let onCrash = UnhandledExceptionEventHandler(fun _ _ -> restoreOnce ())
-
-                AppDomain.CurrentDomain.ProcessExit.AddHandler onExit
-                AppDomain.CurrentDomain.UnhandledException.AddHandler onCrash
-
-                // a long-running program that enters and leaves raw mode repeatedly
-                // would otherwise pile up a handler pair per call
-                let unhook () =
-                    AppDomain.CurrentDomain.ProcessExit.RemoveHandler onExit
-                    AppDomain.CurrentDomain.UnhandledException.RemoveHandler onCrash
-
-                let entered =
-                    try
-                        entry.Apply()
-                    with _ ->
-                        false
-
-                if entered then
-                    raw <- true
-
-                    { new IDisposable with
-                        member _.Dispose() =
-                            try
-                                restoreOnce ()
-                            finally
-                                unhook () }
-                else
-                    try
-                        // the restore here undoes at most a part-applied entry, so its
-                        // result must not be allowed to mark the terminal raw
-                        restoreOnce ()
-                        raw <- false
-                    finally
-                        unhook ()
-
-                    noop
+    let enterRawMode () : IDisposable = enterRawModeWith ignore

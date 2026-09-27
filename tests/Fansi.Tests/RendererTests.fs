@@ -2,6 +2,7 @@ module Fansi.Tests.RendererTests
 
 open System.IO
 open Xunit
+open Fansi
 open Fansi.Core
 
 let private renderer () =
@@ -62,3 +63,54 @@ let ``a run carries the style of its cells`` () =
     r.SetFrame buf
     r.Flush()
     Assert.Equal("\x1b[1;1H\x1b[0m\x1b[1m\x1b[31mab\x1b[0m", sink.ToString())
+
+[<Fact>]
+let ``a frame at a new size starts by erasing the old one`` () =
+    let r, sink = renderer ()
+    r.SetFrame(frame 3 1 "abc")
+    r.Flush()
+    sink.GetStringBuilder().Clear() |> ignore
+
+    r.SetFrame(frame 4 2 "ab")
+    r.Flush()
+    Assert.StartsWith(AnsiSequence.eraseVisibleScreen, sink.ToString())
+
+[<Fact>]
+let ``the erase leaves scrollback alone`` () =
+    Assert.DoesNotContain("\x1b[3J", AnsiSequence.eraseVisibleScreen)
+
+[<Fact>]
+let ``a frame at the same size does not erase`` () =
+    let r, sink = renderer ()
+    r.SetFrame(frame 3 1 "abc")
+    r.Flush()
+    sink.GetStringBuilder().Clear() |> ignore
+
+    r.SetFrame(frame 3 1 "aXc")
+    r.Flush()
+    Assert.DoesNotContain("\x1b[2J", sink.ToString())
+
+[<Fact>]
+let ``a blank frame at a new size still erases`` () =
+    let r, sink = renderer ()
+    r.SetFrame(frame 3 1 "abc")
+    r.Flush()
+    sink.GetStringBuilder().Clear() |> ignore
+
+    r.SetFrame(Buffer.create 5 2)
+    r.Flush()
+    Assert.StartsWith(AnsiSequence.eraseVisibleScreen, sink.ToString())
+
+[<Fact>]
+let ``nothing paints after stop`` () =
+    let r, sink = renderer ()
+    r.Start()
+    r.SetFrame(frame 3 1 "abc")
+    r.Stop()
+    let atStop = sink.ToString()
+
+    r.SetFrame(frame 3 1 "xyz")
+    r.Flush()
+
+    Assert.Contains("abc", atStop)
+    Assert.Equal(atStop, sink.ToString())
