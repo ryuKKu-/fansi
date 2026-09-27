@@ -5,6 +5,9 @@
     <RootNamespace>Fansi</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Fansi.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <Compile Include="Core\Geometry.fs" />
     <Compile Include="Core\Style.fs" />
     <Compile Include="Core\Props.fs" />
@@ -13,9 +16,11 @@
     <Compile Include="Core\Solver.fs" />
     <Compile Include="Core\Layout.fs" />
     <Compile Include="Core\Buffer.fs" />
+    <Compile Include="Core\Events.fs" />
+    <Compile Include="Core\InputParser.fs" />
+    <Compile Include="Core\Terminal.fs" />
     <Compile Include="Types.fs" />
     <Compile Include="Elmish.fs" />
-    <Compile Include="Core\Input.fs" />
     <Compile Include="Renderer.fs" />
     <Compile Include="Keymap.fs" />
     <Compile Include="FansiProgram.fs" />

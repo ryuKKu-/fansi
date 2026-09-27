@@ -1,4 +1,7 @@
-﻿module Fansi.Elmish
+﻿// AutoOpen so `open Fansi` alone reaches QuitToken and Cmd; everything else here
+// is internal and stays out of a consumer's way regardless.
+[<AutoOpen>]
+module Fansi.Elmish
 
 open Elmish
 
@@ -58,6 +61,8 @@ module internal Program' =
 
     module Subs = Sub.Internal
 
+    /// Returns a pair: start the program, and stop it from outside the pump for a
+    /// caller that has no message to send, such as the reader hitting end of input.
     let runFirstRender (arg: 'arg) (program: Program<'arg, 'model, 'msg, 'view>) =
         // An ugly way to extract properties from the program because they're private
         let init = Program.init program
@@ -84,15 +89,30 @@ module internal Program' =
         let mutable state = model
         let mutable activeSubs = Subs.empty
         let mutable terminated = false
+        // Keystrokes, resize notifications and timers each dispatch from their own
+        // thread, so the queue and the pump have to be taken one thread at a time.
+        let pump = obj ()
+
+        let stop () =
+            if not terminated then
+                Subs.Fx.stop onError activeSubs
+                terminate state
+                terminated <- true
 
         let rec dispatch msg =
-            if not terminated then
-                rb.Push msg
+            lock pump (fun () ->
+                if not terminated then
+                    rb.Push msg
 
-                if not reentered then
-                    reentered <- true
-                    processMsgs ()
-                    reentered <- false
+                    if not reentered then
+                        reentered <- true
+
+                        // An update that throws would otherwise leave the flag set
+                        // and every later message would queue behind it for ever.
+                        try
+                            processMsgs ()
+                        finally
+                            reentered <- false)
 
         and processMsgs () =
             let mutable nextMsg = rb.Pop()
@@ -101,9 +121,7 @@ module internal Program' =
                 let msg = nextMsg.Value
 
                 if toTerminate msg then
-                    Subs.Fx.stop onError activeSubs
-                    terminate state
-                    terminated <- true
+                    stop ()
                 else
                     let model', cmd' = update msg state
                     let sub' = subscribe model'
@@ -113,17 +131,29 @@ module internal Program' =
                     |> Cmd.exec (fun ex -> onError ($"Error handling the message: %A{msg}", ex)) dispatch
 
                     state <- model'
-                    activeSubs <- Subs.diff activeSubs sub' |> Subs.Fx.change onError dispatch
-                    nextMsg <- rb.Pop()
+
+                    // Cmd.quit sets its flag while the commands run, which is after
+                    // the check above. Without this second look a quit waits for the
+                    // next message to arrive before it lands.
+                    if toTerminate msg then
+                        stop ()
+                    else
+                        activeSubs <- Subs.diff activeSubs sub' |> Subs.Fx.change onError dispatch
+                        nextMsg <- rb.Pop()
 
         reentered <- true
         setState model dispatch
 
-        fun () ->
-            cmd |> Cmd.exec (fun ex -> onError ("Error intitializing:", ex)) dispatch
-            activeSubs <- Subs.diff activeSubs sub |> Subs.Fx.change onError dispatch
-            processMsgs ()
-            reentered <- false
+        let run () =
+            lock pump (fun () ->
+                try
+                    cmd |> Cmd.exec (fun ex -> onError ("Error intitializing:", ex)) dispatch
+                    activeSubs <- Subs.diff activeSubs sub |> Subs.Fx.change onError dispatch
+                    processMsgs ()
+                finally
+                    reentered <- false)
+
+        run, (fun () -> lock pump stop)
 
 module internal Sub =
     open System
@@ -142,6 +172,39 @@ module internal Sub =
 
         start
 
+/// Carries a program's stop request to Cmd.quit, which the user writes at compile
+/// time and so cannot be handed the running program. AsyncLocal keeps it scoped to
+/// one program's run and flows into the tasks and threads that run started.
+type QuitToken() =
+    member val Requested = false with get, set
+
+    static member val private current = new System.Threading.AsyncLocal<QuitToken voption>()
+
+    static member install() =
+        let token = QuitToken()
+        QuitToken.current.Value <- ValueSome token
+        token
+
+    static member clear() = QuitToken.current.Value <- ValueNone
+
+    static member request() =
+        match QuitToken.current.Value with
+        | ValueSome token -> token.Requested <- true
+        | ValueNone -> ()
+
 [<RequireQualifiedAccess>]
 module Cmd =
-    let mapAppMsg (f: 'a -> 'msg) (cmd: Cmd<'a>) : Cmd<FansiMsg<_>> = Cmd.map (FansiMsg.App << f) cmd
+    /// Stop the program after the current message is handled.
+    let quit<'msg> : Cmd<'msg> = [ fun _ -> QuitToken.request () ]
+
+    /// Dispatch a message once, after a delay.
+    let after (delay: int<ms>) (msg: 'msg) : Cmd<'msg> =
+        [ fun dispatch ->
+              let timer = new System.Timers.Timer(float (int delay))
+              timer.AutoReset <- false
+
+              timer.Elapsed.Add(fun _ ->
+                  dispatch msg
+                  timer.Dispose())
+
+              timer.Start() ]

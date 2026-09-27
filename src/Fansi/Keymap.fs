@@ -1,35 +1,35 @@
-﻿namespace Fansi
+namespace Fansi
 
-open System
+open Fansi.Core
 
 module Keymap =
     type Help = { Key: string; Description: string }
 
     type KeyControl =
-        { Key: ConsoleKey
-          Modifier: ConsoleModifiers option }
+        { Key: Key
+          Ctrl: bool
+          Alt: bool
+          Shift: bool }
+
+        static member plain key =
+            { Key = key
+              Ctrl = false
+              Alt = false
+              Shift = false }
 
     type KeyBind =
-        { Keys: KeyControl[]
+        { Keys: KeyControl list
           Disabled: bool
           Help: Help option }
 
-        member this.Enabled = this.Disabled |> not && this.Keys <> [||]
-
-        static member create key =
-            { Keys = [| key |]
-              Disabled = false
-              Help = None }
+        member this.Enabled = not this.Disabled && not (List.isEmpty this.Keys)
 
         static member create keys =
             { Keys = keys
               Disabled = false
               Help = None }
 
-    let unbind keyBind =
-        { keyBind with
-            Keys = [||]
-            Help = None }
+    let unbind keyBind = { keyBind with Keys = []; Help = None }
 
     let toggleEnable keyBind =
         { keyBind with
@@ -39,11 +39,11 @@ module Keymap =
 
     let setKeys keyBind keys = { keyBind with Keys = keys }
 
-    let ``match`` (binding: KeyBind) (key: ConsoleKeyInfo) =
-        binding
-        |> fun b ->
-            b.Enabled
-            && b.Keys
-               |> Array.exists (fun kc ->
-                   kc.Key = key.Key
-                   && (kc.Modifier |> Option.defaultValue ConsoleModifiers.None) = key.Modifiers)
+    let ``match`` (binding: KeyBind) (event: KeyEvent) =
+        binding.Enabled
+        && binding.Keys
+           |> List.exists (fun kc ->
+               kc.Key = event.Key
+               && kc.Ctrl = event.Ctrl
+               && kc.Alt = event.Alt
+               && kc.Shift = event.Shift)

@@ -33,6 +33,18 @@ module AnsiSequence =
     let disableMouseTracking = "\x1b[?1003l\x1b[?1006l"
 
     [<Literal>]
+    let enableBracketedPaste = "\x1b[?2004h"
+
+    [<Literal>]
+    let disableBracketedPaste = "\x1b[?2004l"
+
+    [<Literal>]
+    let enableFocusReporting = "\x1b[?1004h"
+
+    [<Literal>]
+    let disableFocusReporting = "\x1b[?1004l"
+
+    [<Literal>]
     let resetStyle = "\x1b[0m"
 
     let moveCursorTo (x: int) (y: int) = $"\x1b[{y + 1};{x + 1}H"

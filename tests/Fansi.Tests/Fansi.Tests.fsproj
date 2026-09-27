@@ -14,6 +14,10 @@
     <Compile Include="BufferTests.fs" />
     <Compile Include="PaintTests.fs" />
     <Compile Include="RendererTests.fs" />
+    <Compile Include="InputParserTests.fs" />
+    <Compile Include="TerminalTests.fs" />
+    <Compile Include="ProgramTests.fs" />
+    <Compile Include="KeymapTests.fs" />
     <Compile Include="ComponentTests.fs" />
     <None Include="paket.references" />
   </ItemGroup>

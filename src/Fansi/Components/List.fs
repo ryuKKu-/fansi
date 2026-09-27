@@ -12,7 +12,7 @@ module ListComponent =
         | MoveUp
         | MoveDown
         | Select
-        | KeyInput of ConsoleKeyInfo
+        | KeyInput of KeyEvent
 
     type Model<'item> =
         { Items: 'item list
@@ -88,11 +88,11 @@ module ListComponent =
                 SelectedItemIndex = selectedIndex },
             Cmd.none
 
-        | KeyInput cki when model.Focused ->
-            match cki.Key with
-            | ConsoleKey.UpArrow -> update MoveUp model
-            | ConsoleKey.DownArrow -> update MoveDown model
-            | ConsoleKey.Enter -> update Select model
+        | KeyInput key when model.Focused ->
+            match key.Key with
+            | Key.Up -> update MoveUp model
+            | Key.Down -> update MoveDown model
+            | Key.Enter -> update Select model
             | _ -> model, Cmd.none
 
         | KeyInput _ -> model, Cmd.none

@@ -1,31 +1,17 @@
-﻿namespace Fansi
+namespace Fansi
 
-open System
+open Fansi.Core
 
-[<RequireQualifiedAccess>]
-type MouseButton =
-    | Left
-    | Middle
-    | Right
-    | ScrollUp
-    | ScrollDown
-    | None
+/// Milliseconds, for Cmd.after and the input timeouts.
+[<Measure>]
+type ms
 
-[<RequireQualifiedAccess>]
-type MouseAction =
-    | Press
-    | Release
-    | Move
-
-type MouseEvent =
-    { Button: MouseButton
-      Action: MouseAction
-      X: int
-      Y: int
-      Modifiers: ConsoleModifiers }
-
+/// Mirrors InputEvent, with App added for the application's own messages. The
+/// program converts one to the other and dispatches.
 type FansiMsg<'appMsg> =
-    | KeyPress of ConsoleKeyInfo
-    | MouseEvent of MouseEvent
-    | Quit
+    | KeyPress of KeyEvent
+    | Mouse of MouseEvent
+    | Paste of string
+    | Resize of width: int * height: int
+    | FocusChanged of bool
     | App of 'appMsg

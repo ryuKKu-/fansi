@@ -25,6 +25,32 @@ let ``the text input shows its prompt and its value`` () =
     Assert.StartsWith("> hi", (render 10 1 (TextInputComponent.view model)).Head)
 
 [<Fact>]
+let ``a plain character is inserted into a focused text input`` () =
+    let model, _ = TextInputComponent.init ()
+    let model = { model with Focused = true }
+
+    let model, _ =
+        TextInputComponent.update (TextInputComponent.KeyInput(KeyEvent.plain (Key.Char 'a'))) model
+
+    Assert.Equal("a", model.Value.ToString())
+
+[<Fact>]
+let ``ctrl+letter does not insert into a focused text input`` () =
+    let model, _ = TextInputComponent.init ()
+    let model = { model with Focused = true }
+
+    let model, _ =
+        TextInputComponent.update
+            (TextInputComponent.KeyInput
+                { Key = Key.Char 'a'
+                  Ctrl = true
+                  Alt = false
+                  Shift = false })
+            model
+
+    Assert.Equal("", model.Value.ToString())
+
+[<Fact>]
 let ``the button shows its label inside a border`` () =
     let model, _ = ButtonComponent.init "OK"
     let lines = render 10 3 (ButtonComponent.view model)

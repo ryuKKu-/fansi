@@ -88,7 +88,7 @@ module TextInputComponent =
         | Focus
         | Blur
         | CursorMsg of VirtualCursor.Message
-        | KeyInput of ConsoleKeyInfo
+        | KeyInput of KeyEvent
 
     type Keymap =
         { CharacterForward: KeyBind
@@ -97,22 +97,10 @@ module TextInputComponent =
           DeleteForward: KeyBind }
 
     let defaultKeymap =
-        { CharacterForward =
-            KeyBind.create
-                { Key = ConsoleKey.RightArrow
-                  Modifier = None }
-          CharacterBackward =
-            KeyBind.create
-                { Key = ConsoleKey.LeftArrow
-                  Modifier = None }
-          DeleteBackward =
-            KeyBind.create
-                { Key = ConsoleKey.Backspace
-                  Modifier = None }
-          DeleteForward =
-            KeyBind.create
-                { Key = ConsoleKey.Delete
-                  Modifier = None } }
+        { CharacterForward = KeyBind.create [ KeyControl.plain Key.Right ]
+          CharacterBackward = KeyBind.create [ KeyControl.plain Key.Left ]
+          DeleteBackward = KeyBind.create [ KeyControl.plain Key.Backspace ]
+          DeleteForward = KeyBind.create [ KeyControl.plain Key.Delete ] }
 
     type Model =
         { Focused: bool
@@ -194,31 +182,32 @@ module TextInputComponent =
             let m, cmd = VirtualCursor.update msg model.Cursor
             { model with Cursor = m }, Cmd.map CursorMsg cmd
 
-        | KeyInput cki when model.Focused ->
+        | KeyInput key when model.Focused ->
             if
-                Keymap.``match`` model.Keymap.CharacterForward cki
+                Keymap.``match`` model.Keymap.CharacterForward key
                 && model.CursorPosition < model.Value.Length
             then
                 setCursorPosition (model.CursorPosition + 1) model, Cmd.none
-            elif Keymap.``match`` model.Keymap.CharacterBackward cki && model.CursorPosition > 0 then
+            elif Keymap.``match`` model.Keymap.CharacterBackward key && model.CursorPosition > 0 then
                 setCursorPosition (model.CursorPosition - 1) model, Cmd.none
-            elif Keymap.``match`` model.Keymap.DeleteBackward cki then
+            elif Keymap.``match`` model.Keymap.DeleteBackward key then
                 if model.CursorPosition > 0 then
                     model.Value.Remove(model.CursorPosition - 1, 1) |> ignore
                     setCursorPosition (model.CursorPosition - 1) model, Cmd.none
                 else
                     model, Cmd.none
-            elif Keymap.``match`` model.Keymap.DeleteForward cki then
+            elif Keymap.``match`` model.Keymap.DeleteForward key then
                 if model.CursorPosition < model.Value.Length then
                     model.Value.Remove(model.CursorPosition, 1) |> ignore
                     setCursorPosition model.CursorPosition model, Cmd.none
                 else
                     model, Cmd.none
-            elif not (Char.IsControl cki.KeyChar) then
-                model.Value.Insert(model.CursorPosition, cki.KeyChar) |> ignore
-                setCursorPosition (model.CursorPosition + 1) model, Cmd.none
             else
-                model, Cmd.none
+                match key.Key with
+                | Key.Char c when not (Char.IsControl c) && not key.Ctrl ->
+                    model.Value.Insert(model.CursorPosition, c) |> ignore
+                    setCursorPosition (model.CursorPosition + 1) model, Cmd.none
+                | _ -> model, Cmd.none
 
         | _ -> model, Cmd.none
 
