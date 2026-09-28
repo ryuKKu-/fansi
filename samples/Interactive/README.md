@@ -123,9 +123,6 @@ Not bugs — expected behaviour, left as is:
 
 - On an older Windows console that rejects virtual-terminal input, raw mode
   still engages but arrows and function keys will not parse.
-- The library's `TextInput` component types the letter for Alt+letter. This
-  sample does its own typing and ignores Alt, so here Alt+letter is logged as
-  a key instead.
 - If raw mode fails to apply, Ctrl+C is still owned by the operating system
   and ends the process straight away. The exit hook still restores the screen
   first.

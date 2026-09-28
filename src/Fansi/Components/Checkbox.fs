@@ -12,7 +12,6 @@ module CheckboxComponent =
     type Model =
         { Checked: bool
           Label: string
-          Focused: bool
           CheckedChar: string
           UncheckedChar: string
           CheckedStyle: Style
@@ -21,7 +20,6 @@ module CheckboxComponent =
     let init label =
         { Checked = false
           Label = label
-          Focused = false
           CheckedChar = "☑"
           UncheckedChar = "☐"
           CheckedStyle =

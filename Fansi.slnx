@@ -11,6 +11,7 @@
   <Folder Name="/samples/">
     <Project Path="samples/Static/Static.fsproj" />
     <Project Path="samples/Interactive/Interactive.fsproj" />
+    <Project Path="samples/Components/Components.fsproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Fansi.Tests/Fansi.Tests.fsproj" />

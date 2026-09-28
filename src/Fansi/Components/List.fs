@@ -20,7 +20,6 @@ module ListComponent =
           SelectedItemIndex: int option
           ViewportOffset: int
           ViewportSize: int
-          Focused: bool
           ItemToString: 'item -> string
           SelectedStyle: Style
           NormalStyle: Style
@@ -33,7 +32,6 @@ module ListComponent =
           SelectedItemIndex = None
           ViewportOffset = 0
           ViewportSize = viewportSize
-          Focused = false
           ItemToString = itemToString
           SelectedStyle =
             { Style.Default with
@@ -88,14 +86,12 @@ module ListComponent =
                 SelectedItemIndex = selectedIndex },
             Cmd.none
 
-        | KeyInput key when model.Focused ->
+        | KeyInput key ->
             match key.Key with
             | Key.Up -> update MoveUp model
             | Key.Down -> update MoveDown model
             | Key.Enter -> update Select model
             | _ -> model, Cmd.none
-
-        | KeyInput _ -> model, Cmd.none
 
     let selectedItem model =
         model.SelectedItemIndex |> Option.map (fun idx -> model.Items[idx])

@@ -13,12 +13,13 @@ module SpinnerComponent =
         | Braille
         | Custom of string array
 
-    type Message = | Tick
+    type Message = Tick of int64
 
     type Model =
-        { Frame: int
+        { Id: int64
+          Frame: int
           Frames: string array
-          Interval: float
+          Interval: int<ms>
           Style: Style
           Label: string }
 
@@ -29,8 +30,9 @@ module SpinnerComponent =
         | Braille -> [| "⣾"; "⣽"; "⣻"; "⢿"; "⡿"; "⣟"; "⣯"; "⣷" |]
         | Custom frames -> frames
 
-    let init spinnerStyle interval label =
-        { Frame = 0
+    let init spinnerStyle (interval: int<ms>) label =
+        { Id = ComponentId.next ()
+          Frame = 0
           Frames = framesFor spinnerStyle
           Interval = interval
           Style =
@@ -41,13 +43,14 @@ module SpinnerComponent =
 
     let update msg model =
         match msg with
-        | Tick ->
+        | Tick id when id = model.Id ->
             { model with
                 Frame = (model.Frame + 1) % model.Frames.Length },
             Cmd.none
+        | Tick _ -> model, Cmd.none
 
     let subscribe model =
-        Sub.timer [ "fansi"; "spinner" ] (int model.Interval * 1<ms>) Tick
+        Sub.timer [ "fansi"; "spinner"; string model.Id ] model.Interval (Tick model.Id)
 
     let view model : Node =
         let frame = model.Frames[model.Frame]

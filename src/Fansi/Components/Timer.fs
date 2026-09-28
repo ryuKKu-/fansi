@@ -9,21 +9,21 @@ open Fansi.Core
 module TimerComponent =
 
     type Message =
-        | TickMsg of int
-        | StartStopMsg of int
-        | TimedOutMsg of int
+        | TickMsg of int64
+        | StartStopMsg of int64
+        | TimedOutMsg of int64
 
     type Model =
-        { Id: int
+        { Id: int64
           Running: bool
-          Interval: float
+          Interval: int<ms>
           Timeout: TimeSpan
           Style: Style }
 
         member this.Toggle() = Cmd.ofMsg (StartStopMsg this.Id)
 
-    let init id interval timeout =
-        { Id = id
+    let init (interval: int<ms>) timeout =
+        { Id = ComponentId.next ()
           Interval = interval
           Running = true
           Timeout = timeout
@@ -32,28 +32,24 @@ module TimerComponent =
 
     let update msg model =
         match msg with
-        | TickMsg id ->
-            if id = model.Id then
-                let t = model.Timeout - TimeSpan.FromMilliseconds(model.Interval)
+        | TickMsg id when id = model.Id && model.Running ->
+            let t = model.Timeout - TimeSpan.FromMilliseconds(float (int model.Interval))
 
-                if t <= TimeSpan.Zero then
-                    { model with
-                        Timeout = TimeSpan.Zero
-                        Running = false },
-                    Cmd.ofMsg (TimedOutMsg id)
-                else
-                    { model with Timeout = t }, Cmd.none
-            else
-                model, Cmd.none
-
-        | StartStopMsg id ->
-            if id = model.Id && model.Timeout > TimeSpan.Zero then
+            if t <= TimeSpan.Zero then
                 { model with
-                    Running = model.Running |> not },
-                Cmd.none
+                    Timeout = TimeSpan.Zero
+                    Running = false },
+                Cmd.ofMsg (TimedOutMsg id)
             else
-                model, Cmd.none
+                { model with Timeout = t }, Cmd.none
 
+        | StartStopMsg id when id = model.Id && model.Timeout > TimeSpan.Zero ->
+            { model with
+                Running = not model.Running },
+            Cmd.none
+
+        | TickMsg _
+        | StartStopMsg _
         | TimedOutMsg _ -> model, Cmd.none
 
     let view model : Node =
@@ -64,6 +60,6 @@ module TimerComponent =
 
     let subscribe model =
         if model.Running then
-            Sub.timer [ "fansi"; "timer"; string model.Id ] (int model.Interval * 1<ms>) (TickMsg model.Id)
+            Sub.timer [ "fansi"; "timer"; string model.Id ] model.Interval (TickMsg model.Id)
         else
             Sub.none

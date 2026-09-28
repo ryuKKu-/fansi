@@ -8,59 +8,39 @@ open Fansi.Core
 let private render w h node = Paint.render w h node |> Buffer.toLines
 
 [<Fact>]
-let ``two text inputs get their own cursor id`` () =
-    let a, _ = TextInputComponent.init ()
-    let b, _ = TextInputComponent.init ()
-    Assert.NotEqual(a.Cursor.Id, b.Cursor.Id)
-
-[<Fact>]
 let ``the timer shows the remaining time`` () =
-    let model, _ = TimerComponent.init 1 1000.0 (TimeSpan.FromSeconds 5.0)
+    let model, _ = TimerComponent.init 1000<ms> (TimeSpan.FromSeconds 5.0)
     Assert.Equal("\u23f1 00:00:05.000", (render 20 1 (TimerComponent.view model)).Head.TrimEnd())
-
-[<Fact>]
-let ``the text input shows its prompt and its value`` () =
-    let model, _ = TextInputComponent.init ()
-    let model = TextInputComponent.insertSpan ("hi".AsSpan()) model
-    Assert.StartsWith("> hi", (render 10 1 (TextInputComponent.view model)).Head)
-
-[<Fact>]
-let ``a plain character is inserted into a focused text input`` () =
-    let model, _ = TextInputComponent.init ()
-    let model = { model with Focused = true }
-
-    let model, _ =
-        TextInputComponent.update (TextInputComponent.KeyInput(KeyEvent.plain (Key.Char 'a'))) model
-
-    Assert.Equal("a", model.Value.ToString())
-
-[<Fact>]
-let ``ctrl+letter does not insert into a focused text input`` () =
-    let model, _ = TextInputComponent.init ()
-    let model = { model with Focused = true }
-
-    let model, _ =
-        TextInputComponent.update
-            (TextInputComponent.KeyInput
-                { Key = Key.Char 'a'
-                  Ctrl = true
-                  Alt = false
-                  Shift = false })
-            model
-
-    Assert.Equal("", model.Value.ToString())
 
 [<Fact>]
 let ``the button shows its label inside a border`` () =
     let model, _ = ButtonComponent.init "OK"
-    let lines = render 10 3 (ButtonComponent.view model)
+    let lines = render 10 3 (ButtonComponent.view false model)
     Assert.Contains("OK", lines[1])
     Assert.StartsWith("\u250c", lines[0])
+
+[<Fact>]
+let ``a focused button has a rounded border`` () =
+    let model, _ = ButtonComponent.init "OK"
+    Assert.StartsWith("\u256d", (render 10 3 (ButtonComponent.view true model))[0])
 
 [<Fact>]
 let ``the list marks the focused item`` () =
     let model, _ = ListComponent.init [ "one"; "two" ] id 2
     Assert.Equal<string list>([ "\u25b8 one"; "  two" ], render 5 2 (ListComponent.view model))
+
+[<Fact>]
+let ``the list moves and selects on real keys`` () =
+    let model, _ = ListComponent.init [ "one"; "two"; "three" ] id 2
+
+    let press key m =
+        fst (ListComponent.update (ListComponent.KeyInput(KeyEvent.plain key)) m)
+
+    let moved = model |> press Key.Down |> press Key.Down
+    Assert.Equal(2, moved.FocusItemIndex)
+    Assert.Equal(1, moved.ViewportOffset)
+    Assert.Equal(Some "three", ListComponent.selectedItem (press Key.Enter moved))
+    Assert.Equal(1, (press Key.Up moved).FocusItemIndex)
 
 [<Fact>]
 let ``the checkbox glyph follows its state`` () =
@@ -78,40 +58,60 @@ let ``the progress bar fills in proportion`` () =
 
 [<Fact>]
 let ``the spinner shows its current frame and label`` () =
-    let model, _ = SpinnerComponent.init SpinnerComponent.Line 100.0 "loading"
+    let model, _ = SpinnerComponent.init SpinnerComponent.Line 100<ms> "loading"
     Assert.Equal("| loading", (render 20 1 (SpinnerComponent.view model)).Head.TrimEnd())
 
-    let next, _ = SpinnerComponent.update SpinnerComponent.Tick model
+    let next, _ = SpinnerComponent.update (SpinnerComponent.Tick model.Id) model
     Assert.Equal("/ loading", (render 20 1 (SpinnerComponent.view next)).Head.TrimEnd())
 
 [<Fact>]
-let ``insertSpan fits a span that is within the limit`` () =
-    let model, _ = TextInputComponent.init ()
-    let model = { model with CharLimit = 10 }
-    let model = TextInputComponent.insertSpan ("abcdefgh".AsSpan()) model
-    Assert.Equal("abcdefgh", model.Value.ToString())
+let ``two timers get their own id and subscription`` () =
+    let a, _ = TimerComponent.init 1000<ms> (TimeSpan.FromSeconds 5.0)
+    let b, _ = TimerComponent.init 1000<ms> (TimeSpan.FromSeconds 5.0)
+    Assert.NotEqual(a.Id, b.Id)
+    Assert.Equal<string list list>([ [ "fansi"; "timer"; string a.Id ] ], TimerComponent.subscribe a |> List.map fst)
+
+    Assert.NotEqual<string list list>(
+        TimerComponent.subscribe a |> List.map fst,
+        TimerComponent.subscribe b |> List.map fst
+    )
 
 [<Fact>]
-let ``insertSpan truncates to the room that is left`` () =
-    let model, _ = TextInputComponent.init ()
-    let model = { model with CharLimit = 10 }
-    let model = TextInputComponent.insertSpan ("abcde".AsSpan()) model
-    let model = TextInputComponent.insertSpan ("fghijklmn".AsSpan()) model
-    Assert.Equal("abcdefghij", model.Value.ToString())
+let ``a timer ignores another timer's tick`` () =
+    let a, _ = TimerComponent.init 1000<ms> (TimeSpan.FromSeconds 5.0)
+    let b, _ = TimerComponent.init 1000<ms> (TimeSpan.FromSeconds 5.0)
+    let ticked, _ = TimerComponent.update (TimerComponent.TickMsg b.Id) a
+    Assert.Equal(a.Timeout, ticked.Timeout)
+    let own, _ = TimerComponent.update (TimerComponent.TickMsg a.Id) a
+    Assert.Equal(TimeSpan.FromSeconds 4.0, own.Timeout)
 
 [<Fact>]
-let ``insertSpan inserts nothing when the limit is already reached`` () =
-    let model, _ = TextInputComponent.init ()
-    let model = { model with CharLimit = 3 }
-    let model = TextInputComponent.insertSpan ("abc".AsSpan()) model
-    let model = TextInputComponent.insertSpan ("de".AsSpan()) model
-    Assert.Equal("abc", model.Value.ToString())
+let ``a stopped timer does not subscribe`` () =
+    let a, _ = TimerComponent.init 1000<ms> (TimeSpan.FromSeconds 5.0)
+    Assert.Empty(TimerComponent.subscribe { a with Running = false })
 
 [<Fact>]
-let ``insertSpan ignores the limit when it is zero`` () =
-    let model, _ = TextInputComponent.init ()
+let ``a paused timer ignores its own tick`` () =
+    let a, _ = TimerComponent.init 1000<ms> (TimeSpan.FromSeconds 5.0)
+    let paused = { a with Running = false }
+    let ticked, cmd = TimerComponent.update (TimerComponent.TickMsg paused.Id) paused
+    Assert.Equal(paused.Timeout, ticked.Timeout)
+    Assert.Empty(cmd)
 
-    let model =
-        TextInputComponent.insertSpan ("a longer string than any limit".AsSpan()) model
+[<Fact>]
+let ``two spinners get their own subscription and ignore each other's tick`` () =
+    let a, _ = SpinnerComponent.init SpinnerComponent.Line 100<ms> ""
+    let b, _ = SpinnerComponent.init SpinnerComponent.Line 100<ms> ""
 
-    Assert.Equal("a longer string than any limit", model.Value.ToString())
+    Assert.Equal<string list list>(
+        [ [ "fansi"; "spinner"; string a.Id ] ],
+        SpinnerComponent.subscribe a |> List.map fst
+    )
+
+    Assert.NotEqual<string list list>(
+        SpinnerComponent.subscribe a |> List.map fst,
+        SpinnerComponent.subscribe b |> List.map fst
+    )
+
+    let ticked, _ = SpinnerComponent.update (SpinnerComponent.Tick b.Id) a
+    Assert.Equal(a.Frame, ticked.Frame)
