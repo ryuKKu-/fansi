@@ -168,25 +168,33 @@ module Renderer =
                             let prev = Buffer.get previousBuffer x y
 
                             if cur <> prev then
-                                if cursorX <> x || cursorY <> y then
-                                    sb.Append(AnsiSequence.moveCursorTo x y) |> ignore
-                                    cursorX <- x
+                                // The terminal cannot draw the right half of a wide
+                                // character alone, so a change there reprints from the left.
+                                let start = if cur.Continuation && x > 0 then x - 1 else x
+
+                                if cursorX <> start || cursorY <> y then
+                                    sb.Append(AnsiSequence.moveCursorTo start y) |> ignore
+                                    cursorX <- start
                                     cursorY <- y
 
                                 let mutable runEnd = x
 
+                                // A run always takes the right half of a wide character
+                                // with it, so cursorX stays where the terminal's cursor is.
                                 while runEnd < w
-                                      && Buffer.get currentBuffer runEnd y <> Buffer.get previousBuffer runEnd y do
+                                      && (Buffer.get currentBuffer runEnd y <> Buffer.get previousBuffer runEnd y
+                                          || (Buffer.get currentBuffer runEnd y).Continuation) do
                                     runEnd <- runEnd + 1
 
-                                for rx in x .. runEnd - 1 do
+                                for rx in start .. runEnd - 1 do
                                     let cell = Buffer.get currentBuffer rx y
 
-                                    if cell.Style <> lastStyle then
-                                        sb.Append(AnsiSequence.applyStyle cell.Style) |> ignore
-                                        lastStyle <- cell.Style
+                                    if not cell.Continuation then
+                                        if cell.Style <> lastStyle then
+                                            sb.Append(AnsiSequence.applyStyle cell.Style) |> ignore
+                                            lastStyle <- cell.Style
 
-                                    sb.Append(cell.Char) |> ignore
+                                        sb.Append(cell.Symbol) |> ignore
 
                                 cursorX <- runEnd
                                 x <- runEnd

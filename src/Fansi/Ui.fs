@@ -24,6 +24,9 @@ module Ui =
 
     let empty = Container([], Style.Default, Props.Default)
 
+    let line children =
+        Line(children, Style.Default, Props.Default)
+
     // --- claim along the parent's axis ---
 
     let len n =
@@ -61,6 +64,16 @@ module Ui =
           Left = max 0 e.Left }
 
     // --- container ---
+
+    let title (text: string) =
+        Node.mapProps (fun p ->
+            { p with
+                Title = [ { Text = text; Style = Style.Default } ] })
+
+    let titleWith (node: Node) =
+        Node.mapProps (fun p ->
+            { p with
+                Title = Runs.ofNode Style.Default node })
 
     let direction d =
         Node.mapProps (fun p -> { p with Direction = d })

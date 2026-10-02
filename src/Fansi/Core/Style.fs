@@ -36,3 +36,6 @@ type Style =
           Italic = false
           Underline = false
           Strikethrough = false }
+
+/// A piece of text in one style. A line is a list of runs.
+type Run = { Text: string; Style: Style }

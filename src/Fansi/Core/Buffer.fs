@@ -1,10 +1,17 @@
 namespace Fansi.Core
 
 type Cell =
-    { Char: char
-      Style: Style }
+    {
+        Symbol: string
+        Style: Style
+        /// The right half of a wide character. The cell before it holds the character.
+        Continuation: bool
+    }
 
-    static member Empty = { Char = ' '; Style = Style.Default }
+    static member Empty =
+        { Symbol = " "
+          Style = Style.Default
+          Continuation = false }
 
 type Buffer =
     { Width: int
@@ -32,32 +39,94 @@ module Buffer =
     /// which is what keeps a child from drawing over its parent.
     let set (b: Buffer) (clip: Rect) x y cell =
         if inside b x y && Rect.contains x y clip then
-            b.Cells[index b x y] <- cell
+            let i = index b x y
+
+            // Writing over either half of a wide character blanks the other half, so
+            // the terminal is never left with half a glyph.
+            if b.Cells[i].Continuation && x > 0 then
+                b.Cells[i - 1] <- { b.Cells[i - 1] with Symbol = " " }
+
+            if not b.Cells[i].Continuation && x + 1 < b.Width && b.Cells[i + 1].Continuation then
+                b.Cells[i + 1] <-
+                    { b.Cells[i + 1] with
+                        Symbol = " "
+                        Continuation = false }
+
+            b.Cells[i] <- cell
 
     /// Write text. A style whose background is Default keeps whatever background is
     /// already in the cell, so a container's background shows through its children.
     let writeText (b: Buffer) (clip: Rect) x y (style: Style) (text: string) =
-        text
-        |> Seq.iteri (fun i ch ->
-            let px = x + i
+        let fits px =
+            inside b px y && Rect.contains px y clip
 
-            let merged =
-                if style.BgColor = Color.Default then
-                    { style with
-                        BgColor = (get b px y).Style.BgColor }
-                else
-                    style
+        let styled px =
+            if style.BgColor = Color.Default then
+                { style with
+                    BgColor = (get b px y).Style.BgColor }
+            else
+                style
 
-            set b clip px y { Char = ch; Style = merged })
+        let mutable px = x
+
+        for g in Width.glyphs text do
+            if g.Cells = 2 && not (fits px && fits (px + 1)) then
+                // Only one half would show, and a terminal cannot draw half a glyph.
+                set
+                    b
+                    clip
+                    px
+                    y
+                    { Symbol = " "
+                      Style = styled px
+                      Continuation = false }
+
+                set
+                    b
+                    clip
+                    (px + 1)
+                    y
+                    { Symbol = " "
+                      Style = styled (px + 1)
+                      Continuation = false }
+            else
+                set
+                    b
+                    clip
+                    px
+                    y
+                    { Symbol = g.Chars
+                      Style = styled px
+                      Continuation = false }
+
+                if g.Cells = 2 then
+                    set
+                        b
+                        clip
+                        (px + 1)
+                        y
+                        { Symbol = ""
+                          Style = styled (px + 1)
+                          Continuation = true }
+
+            px <- px + g.Cells
 
     let fillRect (b: Buffer) (clip: Rect) (area: Rect) style =
         for y in area.Y .. area.Bottom - 1 do
             for x in area.X .. area.Right - 1 do
-                let existing = get b x y
-                set b clip x y { existing with Style = style }
+                // A fill changes colour only, so it must not go through set, which
+                // would split a wide character.
+                if inside b x y && Rect.contains x y clip then
+                    let i = index b x y
+                    b.Cells[i] <- { b.Cells[i] with Style = style }
 
     let toLines (b: Buffer) =
-        [ for y in 0 .. b.Height - 1 -> System.String(Array.init b.Width (fun x -> b.Cells[index b x y].Char)) ]
+        [ for y in 0 .. b.Height - 1 ->
+              System.String.Concat(
+                  [ for x in 0 .. b.Width - 1 ->
+                        let cell = b.Cells[index b x y]
+                        if cell.Continuation then "" else cell.Symbol ]
+              ) ]
 
 module Paint =
     open Fansi.Core.Layout
@@ -68,8 +137,23 @@ module Paint =
             Buffer.writeText buf clip rect.X rect.Y style (string bc.TopLeft + middle + string bc.TopRight)
 
             for y in rect.Y + 1 .. rect.Bottom - 2 do
-                Buffer.set buf clip rect.X y { Char = bc.Vertical; Style = style }
-                Buffer.set buf clip (rect.Right - 1) y { Char = bc.Vertical; Style = style }
+                Buffer.set
+                    buf
+                    clip
+                    rect.X
+                    y
+                    { Symbol = string bc.Vertical
+                      Style = style
+                      Continuation = false }
+
+                Buffer.set
+                    buf
+                    clip
+                    (rect.Right - 1)
+                    y
+                    { Symbol = string bc.Vertical
+                      Style = style
+                      Continuation = false }
 
             if rect.Height > 1 then
                 Buffer.writeText
@@ -80,42 +164,53 @@ module Paint =
                     style
                     (string bc.BottomLeft + middle + string bc.BottomRight)
 
-    /// Combine a node's own style with the one it inherits from its parent.
-    /// A foreground only carries down when the child leaves it Default. The four
-    /// attributes are OR-ed, so a child cannot switch off bold inside a bold parent;
-    /// that is a limitation we accept, since Style has no "off" value to say it with.
-    /// Background is absent on purpose: Buffer.writeText already keeps a parent's
-    /// background visible under its children.
-    let private cascade (parent: Style) (own: Style) =
-        { own with
-            FgColor =
-                if own.FgColor = Color.Default then
-                    parent.FgColor
-                else
-                    own.FgColor
-            Bold = own.Bold || parent.Bold
-            Italic = own.Italic || parent.Italic
-            Underline = own.Underline || parent.Underline
-            Strikethrough = own.Strikethrough || parent.Strikethrough }
+    let private writeRow (buf: Buffer) (clip: Rect) x y (row: Run list) =
+        row
+        |> List.fold
+            (fun x run ->
+                Buffer.writeText buf clip x y run.Style run.Text
+                x + Width.ofString run.Text)
+            x
+        |> ignore
+
+    /// The title goes into the top border with a space either side, so the box
+    /// needs room for both corners, both spaces and at least one character.
+    let private drawTitle (buf: Buffer) (clip: Rect) (rect: Rect) (style: Style) (title: Run list) =
+        let runs =
+            title
+            |> List.map (fun r ->
+                { r with
+                    Style = Runs.cascade style r.Style })
+            |> Runs.truncate (rect.Width - 4)
+
+        if rect.Height > 0 && Runs.width runs > 0 then
+            Buffer.writeText buf clip (rect.X + 1) rect.Y style " "
+            writeRow buf clip (rect.X + 2) rect.Y runs
+            Buffer.writeText buf clip (rect.X + 2 + Runs.width runs) rect.Y style " "
 
     let rec private paint (buf: Buffer) (parent: Style) (ln: LayoutNode) =
         let p = Node.props ln.Node
-        let s = cascade parent (Node.style ln.Node)
+        let s = Runs.cascade parent (Node.style ln.Node)
 
         if s.BgColor <> Color.Default then
             Buffer.fillRect buf ln.Clip ln.Rect s
 
         match Border.chars p.Border with
-        | Some bc -> drawBorder buf ln.Clip ln.Rect bc s
+        | Some bc ->
+            drawBorder buf ln.Clip ln.Rect bc s
+            drawTitle buf ln.Clip ln.Rect s p.Title
         | None -> ()
 
         match ln.Node with
-        | Text(t, _, _) ->
+        | Text _
+        | Line _ ->
             let area = contentRect ln
 
-            wrapText t area.Width
+            // The parent's background is already painted underneath, so a run only
+            // carries a background it set itself.
+            Runs.wrap (Runs.ofNode { parent with BgColor = Color.Default } ln.Node) area.Width
             |> List.truncate (max 0 area.Height)
-            |> List.iteri (fun i line -> Buffer.writeText buf ln.Clip area.X (area.Y + i) s line)
+            |> List.iteri (fun i row -> writeRow buf ln.Clip area.X (area.Y + i) row)
         | Container _ -> ln.Children |> List.iter (paint buf s)
 
     /// Draw a laid-out tree. Each node paints its own background and border, then

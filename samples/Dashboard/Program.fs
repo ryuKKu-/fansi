@@ -133,15 +133,13 @@ let subscribe model =
           |> Sub.map InputMsg ]
 
 let private panel title focused body =
-    Ui.col (
-        [ Ui.text title
-          |> Ui.bold
-          |> Ui.fg (if focused then Color.Cyan else Color.BrightBlack)
-          |> Ui.len 1
-          Ui.text "" |> Ui.len 1 ]
-        @ body
-    )
+    Ui.col body
     |> Ui.border (if focused then Rounded else Single)
+    |> Ui.titleWith (
+        Ui.text title
+        |> Ui.bold
+        |> Ui.fg (if focused then Color.Cyan else Color.BrightBlack)
+    )
     |> Ui.padX 1
 
 let view model =

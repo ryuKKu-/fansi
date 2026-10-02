@@ -114,3 +114,38 @@ let ``nothing paints after stop`` () =
 
     Assert.Contains("abc", atStop)
     Assert.Equal(atStop, sink.ToString())
+
+[<Fact>]
+let ``a wide character is written once and the next one follows it`` () =
+    let r, sink = renderer ()
+    r.SetFrame(frame 3 1 "字a")
+    r.Flush()
+    Assert.Equal("\x1b[1;1H字a\x1b[0m", sink.ToString())
+
+[<Fact>]
+let ``a change to the right half reprints the whole wide character`` () =
+    let r, sink = renderer ()
+    r.SetFrame(frame 2 1 "字")
+    r.Flush()
+    sink.GetStringBuilder().Clear() |> ignore
+
+    let next = frame 2 1 "字"
+    // Set directly: Buffer.set would blank the left half, which is not the case here.
+    next.Cells[1] <-
+        { next.Cells[1] with
+            Style = { Style.Default with Bold = true } }
+
+    r.SetFrame next
+    r.Flush()
+    Assert.Equal("\x1b[1;1H字\x1b[0m", sink.ToString())
+
+[<Fact>]
+let ``narrow text over a wide character replaces both halves`` () =
+    let r, sink = renderer ()
+    r.SetFrame(frame 2 1 "字")
+    r.Flush()
+    sink.GetStringBuilder().Clear() |> ignore
+
+    r.SetFrame(frame 2 1 "ab")
+    r.Flush()
+    Assert.Equal("\x1b[1;1Hab\x1b[0m", sink.ToString())

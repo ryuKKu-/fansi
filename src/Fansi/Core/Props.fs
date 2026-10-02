@@ -44,7 +44,8 @@ type Props =
       Align: Align
       Padding: Edges
       Margin: Edges
-      Border: BorderStyle }
+      Border: BorderStyle
+      Title: Run list }
 
     static member Default =
         { Main = Auto
@@ -54,4 +55,5 @@ type Props =
           Align = Align.Stretch
           Padding = Edges.Zero
           Margin = Edges.Zero
-          Border = NoBorder }
+          Border = NoBorder
+          Title = [] }

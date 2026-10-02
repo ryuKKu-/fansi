@@ -119,7 +119,7 @@ module ListComponent =
                     if isFocused then
                         model.FocusedIndicator
                     else
-                        String.replicate model.FocusedIndicator.Length " "
+                        String.replicate (Width.ofString model.FocusedIndicator) " "
 
                 Ui.text $"{prefix}{model.ItemToString item}" |> Ui.style style)
 

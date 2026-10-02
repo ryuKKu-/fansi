@@ -12,6 +12,8 @@
     <Compile Include="Core\Style.fs" />
     <Compile Include="Core\Props.fs" />
     <Compile Include="Core\Node.fs" />
+    <Compile Include="Core\Width.fs" />
+    <Compile Include="Core\Runs.fs" />
     <Compile Include="Ui.fs" />
     <Compile Include="Core\Solver.fs" />
     <Compile Include="Core\Layout.fs" />

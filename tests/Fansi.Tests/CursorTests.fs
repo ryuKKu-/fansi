@@ -49,7 +49,7 @@ let ``two cursors subscribe under different ids`` () =
 let ``a focused cursor in its visible half is highlighted`` () =
     let c = { Cursor.create () with Blink = true }
     let shown = cell (Cursor.view true "x" Style.Default c)
-    Assert.Equal('x', shown.Char)
+    Assert.Equal("x", shown.Symbol)
     Assert.Equal(Color.Cyan, shown.Style.BgColor)
     Assert.Equal(Color.Black, shown.Style.FgColor)
 

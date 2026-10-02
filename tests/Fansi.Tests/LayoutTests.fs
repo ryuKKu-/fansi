@@ -210,3 +210,8 @@ let ``a node with saturated padding measures without wrapping`` () =
     // Negative padding clamps to zero, so this is the size of the text alone.
     let minNode = Ui.col [ Ui.text "x" ] |> Ui.pad System.Int32.MinValue
     Assert.Equal((1, 1), Layout.measure minNode 80 24)
+
+[<Fact>]
+let ``wide text measures in cells`` () =
+    Assert.Equal((4, 1), Layout.measure (Ui.text "字字") 80 24)
+    Assert.Equal((2, 2), Layout.measure (Ui.text "字字") 3 24)

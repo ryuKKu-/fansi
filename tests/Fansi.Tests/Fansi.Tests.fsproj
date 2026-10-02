@@ -9,6 +9,8 @@
     <Compile Include="StyleTests.fs" />
     <Compile Include="PropsTests.fs" />
     <Compile Include="SolverTests.fs" />
+    <Compile Include="WidthTests.fs" />
+    <Compile Include="RunsTests.fs" />
     <Compile Include="UiTests.fs" />
     <Compile Include="LayoutTests.fs" />
     <Compile Include="BufferTests.fs" />

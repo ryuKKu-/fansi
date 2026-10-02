@@ -19,7 +19,7 @@ let private pageNamed title =
 
 let private assertFills w h (lines: string list) =
     Assert.Equal(h, lines.Length)
-    Assert.All(lines, fun line -> Assert.Equal(w, line.Length))
+    Assert.All(lines, fun line -> Assert.Equal(w, Width.ofString line))
 
 [<Fact>]
 let ``there are layout pages to show`` () =
@@ -106,7 +106,7 @@ let ``the three panels share the width by their constraints`` () =
     Assert.Equal('┐', lines[1][52])
     Assert.Equal('┌', lines[1][53])
     Assert.Equal('┐', lines[1][78])
-    Assert.Equal("Clock", lines[2].Substring(3, 5))
+    Assert.Equal("Clock", lines[1].Substring(3, 5))
 
 [<Fact>]
 let ``tab moves the rounded border to the next panel`` () =
@@ -216,3 +216,15 @@ let ``space on a finished clock starts it again`` () =
     Assert.True(model.Timer.Running)
     Assert.Equal(TimeSpan.FromMinutes 1.0, model.Timer.Timeout)
     Assert.Equal(0.0, model.Progress.Progress)
+
+[<Fact>]
+let ``the text page lines up wide characters and keeps each run's style`` () =
+    let buf = Paint.render 40 12 (LayoutSample.view (pageNamed "Text"))
+    let lines = Buffer.toLines buf
+    Assert.StartsWith("Status: ok - 3 warnings", lines[3])
+    Assert.True((Buffer.get buf 8 3).Style.Bold)
+    Assert.Equal(Color.Green, (Buffer.get buf 8 3).Style.FgColor)
+    Assert.Equal("日", (Buffer.get buf 0 4).Symbol)
+    Assert.True((Buffer.get buf 1 4).Continuation)
+    Assert.Equal("a", (Buffer.get buf 17 4).Symbol)
+    Assert.StartsWith("╭ Title ", lines[5])

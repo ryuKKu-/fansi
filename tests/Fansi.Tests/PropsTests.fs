@@ -14,3 +14,6 @@ let ``default props size themselves from their content and draw no border`` () =
     Assert.Equal(Edges.Zero, p.Padding)
     Assert.Equal(Edges.Zero, p.Margin)
     Assert.Equal(NoBorder, p.Border)
+
+[<Fact>]
+let ``default props have no title`` () = Assert.Empty(Props.Default.Title)

@@ -110,7 +110,23 @@ let pages =
         Demo =
           Ui.row
               [ box "pad 2" |> Ui.pad 2 |> Ui.bg Color.Blue |> Ui.fill 1
-                box "margin 2" |> Ui.margin 2 |> Ui.bg Color.Blue |> Ui.fill 1 ] } ]
+                box "margin 2" |> Ui.margin 2 |> Ui.bg Color.Blue |> Ui.fill 1 ] }
+
+      { Title = "Text"
+        Note = "Ui.line mixes styles in one row. Wide characters take two cells."
+        Demo =
+          Ui.col
+              [ Ui.line
+                    [ Ui.text "Status: "
+                      Ui.text "ok" |> Ui.bold |> Ui.fg Color.Green
+                      Ui.text " - 3 warnings" |> Ui.fg Color.Yellow ]
+                |> Ui.len 1
+                Ui.text "日本語のテキスト and emoji 😀 line up" |> Ui.len 1
+                Ui.col [ Ui.text "A box with its title in the border." ]
+                |> Ui.border Rounded
+                |> Ui.title "Title"
+                |> Ui.padX 1
+                |> Ui.fill 1 ] } ]
 
 type Model = { Page: int }
 

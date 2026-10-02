@@ -30,6 +30,14 @@ let ``the list marks the focused item`` () =
     Assert.Equal<string list>([ "\u25b8 one"; "  two" ], render 5 2 (ListComponent.view model))
 
 [<Fact>]
+let ``a wide focus marker keeps the items lined up`` () =
+    let model, _ = ListComponent.init [ "a"; "b" ] id 2
+    let model = { model with FocusedIndicator = "✅" }
+    let buf = Paint.render 4 2 (ListComponent.view model)
+    Assert.Equal("a", (Buffer.get buf 2 0).Symbol)
+    Assert.Equal("b", (Buffer.get buf 2 1).Symbol)
+
+[<Fact>]
 let ``the list moves and selects on real keys`` () =
     let model, _ = ListComponent.init [ "one"; "two"; "three" ] id 2
 
@@ -115,3 +123,19 @@ let ``two spinners get their own subscription and ignore each other's tick`` () 
 
     let ticked, _ = SpinnerComponent.update (SpinnerComponent.Tick b.Id) a
     Assert.Equal(a.Frame, ticked.Frame)
+
+[<Fact>]
+let ``a wide value stays inside its text input's box`` () =
+    let input, _ = TextInputComponent.init ()
+
+    let input, _ =
+        TextInputComponent.update (TextInputComponent.SetValue "日本語😀テキスト") { input with Width = 10 }
+
+    let node =
+        Ui.row
+            [ TextInputComponent.view true input |> Ui.border Single |> Ui.len 12
+              Ui.text "R" |> Ui.fill 1 ]
+
+    let buf = Paint.render 20 3 node
+    Assert.Equal("│", (Buffer.get buf 11 1).Symbol)
+    Assert.Equal("R", (Buffer.get buf 12 0).Symbol)

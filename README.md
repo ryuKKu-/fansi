@@ -66,14 +66,24 @@ adjust a node a component already built:
 TimerComponent.view model.Timer |> Ui.border Single |> Ui.fill 1
 ```
 
-- Constructors: `Ui.text`, `Ui.row`, `Ui.col`, `Ui.empty`.
+- Constructors: `Ui.text`, `Ui.line`, `Ui.row`, `Ui.col`, `Ui.empty`.
 - Size along the parent's axis: `Ui.len`, `Ui.pct`, `Ui.ratio`, `Ui.fill`,
   `Ui.minLen`, `Ui.maxLen`, `Ui.auto`. The sizes always add up to the
   parent's size exactly, with no cell lost to rounding.
-- Box: `Ui.border`, `Ui.pad`, `Ui.padX`, `Ui.padY`, `Ui.margin`,
+- Box: `Ui.border`, `Ui.title`, `Ui.titleWith`, `Ui.pad`, `Ui.padX`, `Ui.padY`, `Ui.margin`,
   `Ui.justify`, `Ui.align`.
 - Style: `Ui.fg`, `Ui.bg`, `Ui.bold`, `Ui.italic`, `Ui.underline`,
   `Ui.strike`, `Ui.style`.
+
+`Ui.line` draws its children as one run of text, each part in its own style:
+
+```fsharp
+Ui.line [ Ui.text "Status: "; Ui.text "ok" |> Ui.bold |> Ui.fg Color.Green ]
+```
+
+Inside a line only text and style count. A row or column in it gives its text,
+and its border and padding are ignored. Text is measured in terminal cells, so
+CJK characters and emoji take two.
 
 ## Focus
 

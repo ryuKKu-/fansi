@@ -61,21 +61,10 @@ module Layout =
             | Some _ -> 1
 
     /// Break text into display lines. Explicit newlines always break; anything
-    /// longer than maxWidth is cut hard, with no word awareness.
+    /// wider than maxWidth cells is cut hard, with no word awareness.
     let wrapText (text: string) (maxWidth: int) : string list =
-        if maxWidth <= 0 then
-            []
-        else
-            [ for line in text.Split('\n') do
-                  if line.Length <= maxWidth then
-                      yield line
-                  else
-                      let mutable pos = 0
-
-                      while pos < line.Length do
-                          let take = min maxWidth (line.Length - pos)
-                          yield line.Substring(pos, take)
-                          pos <- pos + take ]
+        Runs.wrap [ { Text = text; Style = Style.Default } ] maxWidth
+        |> List.map (fun row -> row |> List.map (fun r -> r.Text) |> String.concat "")
 
     let private chrome (p: Props) =
         let bt = Border.thickness p.Border
@@ -114,10 +103,10 @@ module Layout =
 
         let contentW, contentH =
             match node with
-            | Text(t, _, _) ->
-                let lines = wrapText t innerW
-                let w = lines |> List.fold (fun acc (l: string) -> max acc l.Length) 0
-                w, List.length lines
+            | Text _
+            | Line _ ->
+                let rows = Runs.wrap (Runs.ofNode Style.Default node) innerW
+                rows |> List.fold (fun acc row -> max acc (Runs.width row)) 0, List.length rows
             | Container([], _, _) -> 0, 0
             | Container(children, _, _) ->
                 let mainAvail, crossAvail =
@@ -222,7 +211,8 @@ module Layout =
 
         let children =
             match node with
-            | Text _ -> []
+            | Text _
+            | Line _ -> []
             | Container([], _, _) -> []
             | Container(kids, _, _) ->
                 let mainAvail, crossAvail =
