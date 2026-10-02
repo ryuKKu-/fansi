@@ -23,10 +23,13 @@
     <Compile Include="CursorTests.fs" />
     <Compile Include="TextInputTests.fs" />
     <Compile Include="ComponentTests.fs" />
+    <Compile Include="SampleTests.fs" />
     <None Include="paket.references" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fansi\Fansi.fsproj" />
+    <ProjectReference Include="..\..\samples\Layout\Layout.fsproj" />
+    <ProjectReference Include="..\..\samples\Dashboard\Dashboard.fsproj" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

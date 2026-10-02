@@ -127,14 +127,16 @@ takes keys as `KeyInput`, pastes as `Pasted` and programmatic changes as
 
 ## Samples
 
-- `samples/Static`: renders a layout once and exits.
-- `samples/Interactive`: raw input, one event at a time. Its README has the
-  terminal checklist.
+- `samples/Layout`: one page per layout idea. Left and Right change page.
+- `samples/Dashboard`: three panels, real components and a focus ring. Its
+  README has the dashboard checklist.
 - `samples/Components`: every component on one screen. Its README has the
   component checklist.
+- `samples/Interactive`: raw input, one event at a time. Its README has the
+  terminal checklist.
 
 ```
-dotnet run --project samples/Components
+dotnet run --project samples/Dashboard
 ```
 
 ## Building

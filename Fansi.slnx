@@ -9,9 +9,10 @@
     <Project Path="src/Fansi/Fansi.fsproj" />
   </Folder>
   <Folder Name="/samples/">
-    <Project Path="samples/Static/Static.fsproj" />
     <Project Path="samples/Interactive/Interactive.fsproj" />
     <Project Path="samples/Components/Components.fsproj" />
+    <Project Path="samples/Layout/Layout.fsproj" />
+    <Project Path="samples/Dashboard/Dashboard.fsproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Fansi.Tests/Fansi.Tests.fsproj" />

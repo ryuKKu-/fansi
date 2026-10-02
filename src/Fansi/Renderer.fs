@@ -8,12 +8,9 @@ open Fansi.Core
 type FPS
 
 module AnsiSequence =
-    [<Literal>]
-    let clearScreen = "\x1b[2J\x1b[3J\x1b[1;1H"
-
-    /// Erases what is visible and homes the cursor, and nothing more. clearScreen's
-    /// ESC[3J also wipes scrollback, and some terminals apply it to the main
-    /// screen's history even from the alternate screen.
+    /// Erases what is visible and homes the cursor. It leaves out ESC[3J, which
+    /// wipes scrollback: some terminals apply it to the main screen's history even
+    /// from the alternate screen.
     [<Literal>]
     let eraseVisibleScreen = "\x1b[2J\x1b[1;1H"
 
@@ -22,9 +19,6 @@ module AnsiSequence =
 
     [<Literal>]
     let disableAltScreenBuffer = "\x1b[?1049l"
-
-    [<Literal>]
-    let moveCursorToOrigin = "\x1b[1;1H"
 
     [<Literal>]
     let hideCursor = "\x1b[?25l"

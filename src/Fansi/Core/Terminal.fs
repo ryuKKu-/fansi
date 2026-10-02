@@ -212,10 +212,6 @@ module Terminal =
         /// TCSANOW is 0 on both platforms.
         let internal setAttr (buffer: byte[]) = tcsetattr (0, 0, buffer) = 0
 
-    let private noop =
-        { new IDisposable with
-            member _.Dispose() = () }
-
     let mutable private raw = false
 
     /// Whether raw mode is actually on. False when there is no console and when the
