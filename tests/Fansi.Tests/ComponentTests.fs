@@ -129,7 +129,7 @@ let ``a wide value stays inside its text input's box`` () =
     let input, _ = TextInputComponent.init ()
 
     let input, _ =
-        TextInputComponent.update (TextInputComponent.SetValue "日本語😀テキスト") { input with Width = 10 }
+        TextInputComponent.update (TextInputComponent.SetValue "日本語😀テキスト") { input with Width = 8 }
 
     let node =
         Ui.row
@@ -139,3 +139,6 @@ let ``a wide value stays inside its text input's box`` () =
     let buf = Paint.render 20 3 node
     Assert.Equal("│", (Buffer.get buf 11 1).Symbol)
     Assert.Equal("R", (Buffer.get buf 12 0).Symbol)
+
+    // The cursor cell is drawn inside the box, not lost under the border.
+    Assert.Contains(Color.Cyan, [ for x in 1..10 -> (Buffer.get buf x 1).Style.BgColor ])

@@ -148,10 +148,10 @@ let ``an emoji typed as two halves goes in whole`` () =
 
 [<Fact>]
 let ``the limit never keeps half an emoji`` () =
-    let typed = { (fresh ()) with CharLimit = 2 } |> typeText ("a" + wave)
+    let typed = { (fresh ()) with CharLimit = 1 } |> typeText ("a" + wave)
     Assert.Equal("a", typed.Value)
 
-    let pasted = { (fresh ()) with CharLimit = 2 } |> send (T.Pasted("a" + wave))
+    let pasted = { (fresh ()) with CharLimit = 1 } |> send (T.Pasted("a" + wave))
     Assert.Equal("a", pasted.Value)
 
 [<Fact>]
@@ -731,3 +731,254 @@ let ``a hidden field never shows a suggestion`` () =
     Assert.Equal(None, T.currentSuggestion m)
     Assert.Equal(">", line 30 true m)
     Assert.Equal("se", (press (KeyEvent.plain Key.Tab) m).Value)
+
+// --- characters as glyphs ---
+
+let private acute = "e\u0301"
+
+[<Fact>]
+let ``left and right step over a letter and its accent in one press`` () =
+    let m = withValue ("a" + acute + "b") (fresh ())
+    let m = press left m
+    Assert.Equal(3, m.Pos)
+    let m = press left m
+    Assert.Equal(1, m.Pos)
+    Assert.Equal(3, (press right m).Pos)
+
+[<Fact>]
+let ``backspace after an accented letter removes the letter and its accent`` () =
+    let m = withValue ("a" + acute) (fresh ()) |> press backspace
+    Assert.Equal("a", m.Value)
+
+[<Fact>]
+let ``delete before an accented letter removes it whole`` () =
+    let m =
+        withValue (acute + "b") (fresh ())
+        |> press (KeyEvent.plain Key.Home)
+        |> press delete
+
+    Assert.Equal("b", m.Value)
+
+[<Fact>]
+let ``a Pos set inside a character moves to its end`` () =
+    let m =
+        { withValue (acute + "b") (fresh ()) with
+            Pos = 1 }
+        |> press (KeyEvent.plain (Key.Char 'x'))
+
+    Assert.Equal(acute + "xb", m.Value)
+
+[<Fact>]
+let ``the limit counts characters, so two emoji fit a limit of two`` () =
+    let m = { (fresh ()) with CharLimit = 2 } |> typeText (wave + wave + "x")
+    Assert.Equal(wave + wave, m.Value)
+
+[<Fact>]
+let ``an accent typed at the limit still joins its letter`` () =
+    let m = { (fresh ()) with CharLimit = 1 } |> typeText acute
+    Assert.Equal(acute, m.Value)
+
+[<Fact>]
+let ``an accent typed with no letter before it is dropped`` () =
+    Assert.Equal("", (typeText "́" (fresh ())).Value)
+
+[<Fact>]
+let ``a paste is cut between characters, never inside one`` () =
+    let m = { (fresh ()) with CharLimit = 2 } |> send (T.Pasted("a" + acute + "b"))
+    Assert.Equal("a" + acute, m.Value)
+
+[<Fact>]
+let ``an accent at the start of a paste joins the letter before the cursor`` () =
+    let m = { (fresh ()) with CharLimit = 1 } |> typeText "e" |> send (T.Pasted "́")
+
+    Assert.Equal(acute, m.Value)
+
+[<Fact>]
+let ``a paste drops bidi controls`` () =
+    Assert.Equal("ab", (fresh () |> send (T.Pasted "a‮b")).Value)
+
+[<Fact>]
+let ``a suggestion is offered when its characters fit the limit`` () =
+    let m =
+        { (fresh ()) with CharLimit = 3 }
+        |> withPool [ "a" + wave + wave ]
+        |> typeText "a"
+
+    Assert.Equal(Some("a" + wave + wave), T.currentSuggestion m)
+
+let private cjk = "日本語"
+
+[<Fact>]
+let ``wide text scrolls by cells and keeps the cursor on screen`` () =
+    let m = { (fresh ()) with Width = 5 } |> withValue cjk
+    Assert.Equal(1, m.Offset)
+    Assert.Equal("> 本語", line 12 false m)
+    let buffer = Paint.render 12 1 (T.view true m)
+    Assert.Equal(Color.Cyan, (Buffer.get buffer 6 0).Style.BgColor)
+
+[<Fact>]
+let ``home on wide text shows it from the start`` () =
+    let m =
+        { (fresh ()) with Width = 5 }
+        |> withValue cjk
+        |> press (KeyEvent.plain Key.Home)
+
+    Assert.Equal(0, m.Offset)
+    Assert.Equal("> 日本", line 12 false m)
+
+[<Fact>]
+let ``deleting wide text pulls the view back`` () =
+    let m = { (fresh ()) with Width = 3 } |> withValue cjk
+    Assert.Equal(2, m.Offset)
+    let m = press backspace m
+    Assert.Equal(1, m.Offset)
+    Assert.Equal("> 本", line 12 false m)
+
+[<Fact>]
+let ``a wide character that would cross the right edge is left out`` () =
+    let m =
+        { (fresh ()) with Width = 3 }
+        |> withValue ("ab" + cjk)
+        |> press (KeyEvent.plain Key.Home)
+
+    Assert.Equal("> ab", line 12 false m)
+
+[<Fact>]
+let ``a field one cell wide still shows the cursor on a wide character`` () =
+    let m = { (fresh ()) with Width = 1 } |> withValue cjk |> press left
+    let buffer = Paint.render 6 1 (T.view true m)
+    Assert.Equal(" ", (Buffer.get buffer 2 0).Symbol)
+    Assert.Equal(Color.Cyan, (Buffer.get buffer 2 0).Style.BgColor)
+
+[<Fact>]
+let ``a password over an emoji scrolls by its stars`` () =
+    let m =
+        { (fresh ()) with
+            Width = 3
+            Echo = T.Password '*' }
+        |> withValue ("a" + wave + "b")
+
+    Assert.Equal(1, m.Offset)
+    Assert.Equal("> **", line 12 false m)
+
+[<Fact>]
+let ``wide ghost text is cut to the cells left`` () =
+    let m = { (fresh ()) with Width = 4 } |> withPool [ "a日本語" ] |> typeText "a"
+    Assert.Equal("> a日", line 12 true m)
+
+[<Fact>]
+let ``a long placeholder is cut to the width`` () =
+    let m =
+        { (fresh ()) with
+            Width = 4
+            Placeholder = "your name" }
+
+    Assert.Equal("> your", line 12 false m)
+
+[<Fact>]
+let ``a long paste scrolls to its end`` () =
+    let m =
+        { (fresh ()) with Width = 20 } |> send (T.Pasted(String.replicate 20000 "a"))
+
+    Assert.Equal(20000 - 19, m.Offset)
+
+[<Fact>]
+let ``a hand-set Offset past the end or inside a character is fixed by the view`` () =
+    let m = withValue (acute + "b") (fresh ())
+    Assert.Equal("> " + acute + "b", line 12 false { m with Offset = 99; Width = 5 })
+    Assert.Equal("> " + acute + "b", line 12 false { m with Offset = 1; Width = 5 })
+
+let private keys =
+    [| KeyEvent.plain Key.Left
+       KeyEvent.plain Key.Right
+       KeyEvent.plain Key.Home
+       KeyEvent.plain Key.End
+       KeyEvent.plain Key.Backspace
+       KeyEvent.plain Key.Delete
+       KeyEvent.ctrl (Key.Char 'w')
+       KeyEvent.ctrl (Key.Char 'z')
+       KeyEvent.ctrl (Key.Char 'y')
+       KeyEvent.plain (Key.Char 'a')
+       KeyEvent.plain (Key.Char ' ')
+       KeyEvent.plain (Key.Char '日')
+       KeyEvent.plain (Key.Char '́')
+       KeyEvent.plain (Key.Char '\uD83D')
+       KeyEvent.plain (Key.Char '\uDE00') |]
+
+let private drive (value: string) (width: int) (presses: int list) =
+    let start =
+        { (fresh ()) with
+            Width = abs (width % 8) + 1 }
+        |> withValue (if isNull value then "" else value)
+
+    presses |> List.fold (fun m k -> press keys[abs (k % keys.Length)] m) start
+
+[<FsCheck.Xunit.Property>]
+let ``the cursor cell is always drawn, and nothing goes past the width``
+    (value: string)
+    (width: int)
+    (presses: int list)
+    =
+    let m = drive value width presses
+    let buffer = Paint.render 40 1 (T.view true m)
+    // The prompt "> " takes columns 0 and 1, so the value has columns 2 .. 2 + Width - 1.
+    let cursor =
+        [ 0..39 ]
+        |> List.filter (fun x -> (Buffer.get buffer x 0).Style.BgColor = Color.Cyan)
+
+    let past =
+        [ 2 + m.Width .. 39 ]
+        |> List.forall (fun x -> (Buffer.get buffer x 0).Symbol = " ")
+
+    not cursor.IsEmpty
+    && List.forall (fun x -> x >= 2 && x < 2 + m.Width) cursor
+    && past
+
+[<FsCheck.Xunit.Property>]
+let ``the cursor always sits between two characters`` (value: string) (width: int) (presses: int list) =
+    let m = drive value width presses
+    let v = m.Value
+    Width.glyphs (v.Substring(0, m.Pos)) @ Width.glyphs (v.Substring(m.Pos)) = Width.glyphs v
+
+[<Fact>]
+let ``a suggestion that continues with an accent still leaves the cursor cell`` () =
+    let m = fresh () |> withPool [ "café" ] |> typeText "cafe"
+    let buffer = Paint.render 12 1 (T.view true m)
+    Assert.Contains(Color.Cyan, [ for x in 0..11 -> (Buffer.get buffer x 0).Style.BgColor ])
+
+[<Fact>]
+let ``word motion moves back over a space that carries an accent`` () =
+    let m =
+        { withValue "a ́b" (fresh ()) with
+            Pos = 3 }
+
+    Assert.Equal(0, (press (KeyEvent.ctrl Key.Left) m).Pos)
+    let deleted = press (KeyEvent.ctrl (Key.Char 'w')) m
+    Assert.Equal("b", deleted.Value)
+    Assert.Equal(0, deleted.Pos)
+    Assert.Equal("b", (press (KeyEvent.alt Key.Backspace) m).Value)
+
+[<Fact>]
+let ``word motion treats an emoji sequence as one word`` () =
+    let family = "\U0001F468‍\U0001F469"
+    let m = withValue (family + " word") (fresh ())
+    let once = press (KeyEvent.ctrl Key.Left) m
+    Assert.Equal(family.Length + 1, once.Pos)
+    Assert.Equal(0, (press (KeyEvent.ctrl Key.Left) once).Pos)
+    Assert.Equal(family.Length, (press (KeyEvent.ctrl Key.Right) (press (KeyEvent.plain Key.Home) m)).Pos)
+    Assert.Equal("word", (press (KeyEvent.ctrl (Key.Char 'w')) once).Value)
+
+[<Fact>]
+let ``set value drops accents at the start`` () =
+    Assert.Equal("ab", (withValue "́́ab" (fresh ())).Value)
+
+[<Fact>]
+let ``a pasted accent at the start of an empty value is dropped`` () =
+    let m = fresh () |> send (T.Pasted "́")
+    Assert.Equal("", m.Value)
+    Assert.Equal(0, m.Pos)
+
+[<Fact>]
+let ``a typed bidi control is refused`` () =
+    let m = typeText "a" (fresh ()) |> press (KeyEvent.plain (Key.Char '‮'))
+    Assert.Equal("a", m.Value)

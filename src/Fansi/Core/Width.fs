@@ -104,7 +104,7 @@ module Width =
             | UnicodeCategory.Format -> 0
             | _ -> if isWide r.Value then 2 else 1
 
-    let private isBidiControl (r: Rune) =
+    let isBidiControl (r: Rune) =
         (r.Value >= 0x202A && r.Value <= 0x202E)
         || (r.Value >= 0x2066 && r.Value <= 0x2069)
 

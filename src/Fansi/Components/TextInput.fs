@@ -1,6 +1,8 @@
 namespace Fansi
 
 open System
+open System.Globalization
+open System.Text
 open Elmish
 open Fansi
 open Fansi.Core
@@ -78,14 +80,16 @@ module TextInputComponent =
     type Model =
         {
             Value: string
-            /// Cursor index, 0 .. Value.Length. Never between the halves of a surrogate pair.
+            /// Cursor index, 0 .. Value.Length. Always on a character boundary: never inside an
+            /// emoji or between a letter and its accent.
             Pos: int
             /// First visible character.
             Offset: int
-            /// Visible cells, 0 = unbounded. The caller sets it, because the layout
-            /// only knows the real width after view has run.
+            /// Visible terminal cells of text, 0 = unbounded. The prompt is not counted. The
+            /// caller sets it, because the layout only knows the real width after view has run.
             Width: int
-            /// 0 = unlimited.
+            /// Most characters the value may hold (an emoji or a letter with its accent counts
+            /// as one), 0 = unlimited.
             CharLimit: int
             Prompt: string
             Placeholder: string
@@ -139,43 +143,79 @@ module TextInputComponent =
                 FgColor = Color.BrightBlack } },
         Cmd.none
 
-    // Positions step over a surrogate pair as one character, so the cursor never
-    // splits an emoji and a delete never leaves half of one behind.
+    // A code point with no width of its own (an accent, a zero width joiner, a
+    // variation selector) is part of the character before it.
+    let private joinsPrevious (r: Rune) =
+        Width.ofRune r = 0 && Rune.GetUnicodeCategory r <> UnicodeCategory.Control
+
+    /// Where each character of s starts, then s.Length. Positions only ever sit on
+    /// these, so the cursor never lands inside an emoji or between a letter and its
+    /// accent, and a delete always removes whole characters.
+    let private boundaries (s: string) =
+        let starts = ResizeArray<int>()
+        let mutable i = 0
+
+        while i < s.Length do
+            let mutable r = Rune.ReplacementChar
+            // Half a surrogate pair is not a rune. It counts as a character of its own.
+            let ok = Rune.TryGetRuneAt(s, i, &r)
+
+            if i = 0 || not ok || not (joinsPrevious r) then
+                starts.Add i
+
+            i <- i + (if ok then r.Utf16SequenceLength else 1)
+
+        starts.Add s.Length
+        List.ofSeq starts
+
+    let private snap (s: string) pos =
+        let pos = Math.Clamp(pos, 0, s.Length)
+        boundaries s |> List.find (fun b -> b >= pos)
+
     let private nextPos (s: string) pos =
-        if pos >= s.Length then
-            s.Length
-        elif pos + 1 < s.Length && Char.IsSurrogatePair(s[pos], s[pos + 1]) then
-            pos + 2
-        else
-            pos + 1
+        boundaries s |> List.tryFind (fun b -> b > pos) |> Option.defaultValue s.Length
 
     let private prevPos (s: string) pos =
-        if pos <= 0 then
-            0
-        elif pos >= 2 && Char.IsSurrogatePair(s[pos - 2], s[pos - 1]) then
-            pos - 2
-        else
-            pos - 1
+        boundaries s
+        |> List.filter (fun b -> b < pos)
+        |> List.tryLast
+        |> Option.defaultValue 0
+
+    // Judges each character by its first code unit, so a space that carries an
+    // accent still counts as a space and the motion always makes progress.
+    let private isSpaceAt (s: string) pos = Char.IsWhiteSpace s[pos]
 
     let private wordForward (s: string) pos =
-        let mutable i = pos
+        let mutable i = snap s pos
 
-        while i < s.Length && Char.IsWhiteSpace(s[i]) do
-            i <- i + 1
+        while i < s.Length && isSpaceAt s i do
+            i <- nextPos s i
 
-        while i < s.Length && not (Char.IsWhiteSpace(s[i])) do
-            i <- i + 1
+        while i < s.Length && not (isSpaceAt s i) do
+            i <- nextPos s i
 
         i
 
     let private wordBackward (s: string) pos =
-        let mutable i = pos
+        let mutable i = snap s pos
 
-        while i > 0 && Char.IsWhiteSpace(s[i - 1]) do
-            i <- i - 1
+        while i > 0 && isSpaceAt s (prevPos s i) do
+            i <- prevPos s i
 
-        while i > 0 && not (Char.IsWhiteSpace(s[i - 1])) do
-            i <- i - 1
+        while i > 0 && not (isSpaceAt s (prevPos s i)) do
+            i <- prevPos s i
+
+        i
+
+    let private glyphCount (s: string) = (boundaries s).Length - 1
+
+    /// How many code units of text are joining code points at its very start.
+    let private markRun (text: string) =
+        let mutable i = 0
+        let mutable r = Rune.ReplacementChar
+
+        while i < text.Length && Rune.TryGetRuneAt(text, i, &r) && joinsPrevious r do
+            i <- i + r.Utf16SequenceLength
 
         i
 
@@ -183,42 +223,38 @@ module TextInputComponent =
         if model.CharLimit <= 0 then
             Int32.MaxValue
         else
-            max 0 (model.CharLimit - model.Value.Length)
+            max 0 (model.CharLimit - glyphCount model.Value)
 
-    /// Cuts text to `limit` characters without keeping half a surrogate pair.
+    /// The first `limit` characters of text, never cut inside one.
     let private fitTo limit (text: string) =
-        if text.Length <= limit then
-            text
-        elif limit > 0 && Char.IsHighSurrogate(text[limit - 1]) then
-            text.Substring(0, limit - 1)
-        else
-            text.Substring(0, limit)
+        let starts = boundaries text
 
+        if limit >= starts.Length - 1 then
+            text
+        else
+            text.Substring(0, starts[max 0 limit])
+
+    // Drops what the screen would drop: control and bidi characters, and half a
+    // surrogate pair. Accents stay, so one pasted after a letter joins it.
     let private oneLine (text: string) =
-        let clean = text |> Seq.filter (fun c -> not (Char.IsControl c)) |> Array.ofSeq
-        let kept = ResizeArray<char>(clean.Length)
+        let kept = StringBuilder()
         let mutable i = 0
 
-        while i < clean.Length do
-            let c = clean[i]
+        while i < text.Length do
+            let mutable r = Rune.ReplacementChar
 
-            if
-                Char.IsHighSurrogate c
-                && i + 1 < clean.Length
-                && Char.IsLowSurrogate clean[i + 1]
-            then
-                kept.Add c
-                kept.Add clean[i + 1]
-                i <- i + 2
-            elif Char.IsSurrogate c then
-                // Half a pair with no partner next to it cannot be rendered or
-                // measured, so it is dropped rather than let into the value.
-                i <- i + 1
+            if Rune.TryGetRuneAt(text, i, &r) then
+                if
+                    Rune.GetUnicodeCategory r <> UnicodeCategory.Control
+                    && not (Width.isBidiControl r)
+                then
+                    kept.Append(r.ToString()) |> ignore
+
+                i <- i + r.Utf16SequenceLength
             else
-                kept.Add c
                 i <- i + 1
 
-        String(kept.ToArray())
+        kept.ToString()
 
     let private validate (model: Model) =
         { model with
@@ -239,7 +275,7 @@ module TextInputComponent =
             // Cleaned to one line and cut to the limit up front, so whatever comes out
             // is already safe to commit as-is.
             |> List.map oneLine
-            |> List.filter (fun s -> model.CharLimit <= 0 || s.Length <= model.CharLimit)
+            |> List.filter (fun s -> model.CharLimit <= 0 || glyphCount s <= model.CharLimit)
             |> List.filter (fun s ->
                 s.Length > model.Value.Length
                 && s.StartsWith(model.Value, StringComparison.OrdinalIgnoreCase))
@@ -257,47 +293,105 @@ module TextInputComponent =
             { model with
                 SuggestionIndex = ((model.SuggestionIndex + step) % count + count) % count }
 
+    let private echo (model: Model) (s: string) =
+        match model.Echo with
+        | Normal -> s
+        | Password mask -> String(mask, glyphCount s)
+        | Hidden -> ""
+
+    /// Cells one character takes on screen, as the echo mode shows it.
+    let private shownWidth (model: Model) (glyph: string) =
+        match model.Echo with
+        | Normal -> Width.ofString glyph
+        | Password mask -> Width.ofString (string mask)
+        | Hidden -> 0
+
+    /// Each character of the value as (start, end, cells shown).
+    let private spans (model: Model) =
+        boundaries model.Value
+        |> List.pairwise
+        |> List.map (fun (a, b) -> a, b, shownWidth model (model.Value.Substring(a, b - a)))
+        |> Array.ofList
+
+    /// Cells shown between two boundaries of the value. Prefix sums keep it fast on
+    /// a long value, where scrolling asks this once per character.
+    let private cellsBetween (spans: (int * int * int) array) =
+        let starts = spans |> Array.map (fun (a, _, _) -> a)
+        let prefix = spans |> Array.map (fun (_, _, c) -> c) |> Array.scan (+) 0
+
+        let at pos =
+            match Array.BinarySearch(starts, pos) with
+            | i when i >= 0 -> i
+            | _ -> spans.Length
+
+        fun a b -> prefix[at b] - prefix[at a]
+
+    /// The longest start of text that fits in `cells` cells, cut between characters.
+    let private fitCells cells (text: string) =
+        let mutable used = 0
+        let mutable stop = 0
+        let mutable full = false
+
+        for (a, b) in List.pairwise (boundaries text) do
+            if not full then
+                let c = Width.ofString (text.Substring(a, b - a))
+
+                if used + c > cells then
+                    full <- true
+                else
+                    used <- used + c
+                    stop <- b
+
+        text.Substring(0, stop)
+
     let private scroll (model: Model) =
         if model.Width <= 0 then
             { model with Offset = 0 }
         else
-            let w = model.Width
+            let spans = spans model
+            let between = cellsBetween spans
+
+            let starts =
+                Array.append (spans |> Array.map (fun (a, _, _) -> a)) [| model.Value.Length |]
+
+            let start = snap model.Value model.Offset
+
+            // The cursor cell is the character under the cursor, or one blank cell at
+            // the end. A hidden character still needs a cell for the cursor.
+            let cursorCells =
+                spans
+                |> Array.tryFind (fun (a, _, _) -> a = model.Pos)
+                |> Option.map (fun (_, _, c) -> max 1 c)
+                |> Option.defaultValue 1
+
+            let fits a =
+                between a model.Pos + cursorCells <= model.Width
 
             let offset =
-                if model.Pos < model.Offset then model.Pos
-                elif model.Pos >= model.Offset + w then model.Pos - w + 1
-                else model.Offset
-
-            // Value.Length + 1: at the end of the value the cursor sits on a cell of
-            // its own, and that cell has to stay on screen too.
-            let offset = Math.Clamp(offset, 0, max 0 (model.Value.Length + 1 - w))
-
-            // Never start the view on the second half of a pair. Pos is never there,
-            // so moving right cannot pass it.
-            let offset =
-                if
-                    offset > 0
-                    && offset < model.Value.Length
-                    && Char.IsLowSurrogate(model.Value[offset])
-                then
-                    offset + 1
+                if model.Pos < start then
+                    model.Pos
+                elif fits start then
+                    start
                 else
-                    offset
+                    starts
+                    |> Array.tryFind (fun a -> a > start && a <= model.Pos && fits a)
+                    |> Option.defaultValue model.Pos
 
-            { model with Offset = offset }
+            // Pulled back as far as the value allows, so deleting at the end shows
+            // more text instead of leaving a gap on the right.
+            let earliest =
+                starts
+                |> Array.find (fun a -> a = model.Value.Length || between a model.Value.Length + 1 <= model.Width)
+
+            { model with
+                Offset = min offset earliest }
 
     // The caller may write Width, Pos or Value directly, not just through update
     // (setting layout width, clearing a field, seeding a value), so both update
     // and view run this first to make the model consistent with itself. It
     // never touches History: a hand-edit is not something to undo.
     let private normalise (model: Model) =
-        let pos = Math.Clamp(model.Pos, 0, model.Value.Length)
-
-        let pos =
-            if pos < model.Value.Length && Char.IsLowSurrogate(model.Value[pos]) then
-                pos + 1
-            else
-                pos
+        let pos = snap model.Value model.Pos
 
         { model with Pos = pos } |> validate |> scroll
 
@@ -368,25 +462,38 @@ module TextInputComponent =
         | [] -> model
 
     let private insertChar (c: char) (model: Model) =
-        let free = room model
-
-        // An emoji comes as two keys. Its first half only goes in if the second
-        // half will fit too, and a second half with no first half is dropped.
-        let fits =
-            if Char.IsHighSurrogate c then
-                free >= 2
-            elif Char.IsLowSurrogate c then
-                free >= 1 && model.Pos > 0 && Char.IsHighSurrogate(model.Value[model.Pos - 1])
-            else
-                free >= 1
-
-        if fits then
+        let insert () =
             commitTyped (model.Value.Insert(model.Pos, string c)) (model.Pos + 1) model
+
+        if Char.IsHighSurrogate c then
+            if room model >= 1 then insert () else model
+        elif Char.IsLowSurrogate c then
+            // The second half of an emoji joins the first, which already took the slot.
+            if model.Pos > 0 && Char.IsHighSurrogate(model.Value[model.Pos - 1]) then
+                insert ()
+            else
+                model
         else
-            model
+            let r = Rune c
+
+            if Width.isBidiControl r then
+                model
+            elif joinsPrevious r then
+                // An accent joins the letter before the cursor and takes no slot.
+                if model.Pos > 0 then insert () else model
+            elif room model >= 1 then
+                insert ()
+            else
+                model
 
     let private paste (text: string) (model: Model) =
-        let text = oneLine text |> fitTo (room model)
+        let text = oneLine text
+        let marks = markRun text
+
+        // Accents at the start of a paste join the letter before the cursor, free of
+        // charge. With no letter there they have nothing to sit on.
+        let lead = if model.Pos > 0 then text.Substring(0, marks) else ""
+        let text = lead + (text.Substring(marks) |> fitTo (room model))
 
         if text = "" then
             moveTo model.Pos model
@@ -400,7 +507,8 @@ module TextInputComponent =
             else
                 model.CharLimit
 
-        let text = oneLine text |> fitTo limit
+        let text = oneLine text
+        let text = text.Substring(markRun text) |> fitTo limit
         commit text text.Length model
 
     type private Action =
@@ -487,21 +595,16 @@ module TextInputComponent =
             let cursor, cmd = Cursor.update m model.Cursor
             { model with Cursor = cursor }, Cmd.map CursorMsg cmd
 
-    let private echo (model: Model) (s: string) =
-        match model.Echo with
-        | Normal -> s
-        | Password mask -> String(mask, s |> Seq.filter (fun c -> not (Char.IsLowSurrogate c)) |> Seq.length)
-        | Hidden -> ""
-
     let view (focused: bool) (model: Model) : Node =
         let model = normalise model
         let prompt = Ui.text model.Prompt |> Ui.style model.PromptStyle
+        let width = if model.Width <= 0 then Int32.MaxValue else model.Width
 
         let cursor under style =
             Cursor.view focused under style model.Cursor
 
         if model.Value = "" then
-            let ph = model.Placeholder
+            let ph = fitCells width model.Placeholder
             let split = nextPos ph 0
             let under = if ph = "" then " " else ph.Substring(0, split)
 
@@ -518,54 +621,61 @@ module TextInputComponent =
                 else
                     model.TextStyle
 
-            let stop =
-                let raw =
-                    if model.Width <= 0 then
-                        v.Length
-                    else
-                        min v.Length (model.Offset + model.Width)
-
-                // The right edge counts UTF-16 units, so it can land between the
-                // halves of a pair. Pull it back rather than show half an emoji.
-                if raw < v.Length && Char.IsLowSurrogate(v[raw]) then
-                    raw - 1
-                else
-                    raw
-
+            let spans = spans model
+            let between = cellsBetween spans
             let underEnd = nextPos v model.Pos
             let before = v.Substring(model.Offset, model.Pos - model.Offset)
             let under = v.Substring(model.Pos, underEnd - model.Pos)
-
-            let after =
-                if underEnd < stop then
-                    v.Substring(underEnd, stop - underEnd)
-                else
-                    ""
+            // Scrolling leaves at least one cell here, so the cursor always shows.
+            let left = width - between model.Offset model.Pos
 
             let ghost =
                 match currentSuggestion model with
                 | Some s when focused -> s.Substring(v.Length)
                 | _ -> ""
 
+            // Gluing the accent onto the typed text would draw a different letter than
+            // the user typed, so a ghost that starts with one is not shown.
+            let ghost = if markRun ghost > 0 then "" else ghost
+
             let ghostHead = ghost.Substring(0, nextPos ghost 0)
 
-            // Never negative: scroll clamps Offset so that Pos - Offset <= Width - 1,
-            // leaving at least one cell for the cursor itself.
-            let ghostRoom =
-                if model.Width <= 0 then
-                    Int32.MaxValue
-                else
-                    max 0 (model.Width - (model.Pos - model.Offset) - 1)
-
-            let ghostTail = ghost.Substring(ghostHead.Length) |> fitTo ghostRoom
-
             let underShown, underStyle =
-                if under = "" && ghostHead <> "" then
-                    ghostHead, model.SuggestionStyle
+                let shown, style =
+                    if under = "" && ghostHead <> "" then
+                        ghostHead, model.SuggestionStyle
+                    else
+                        echo model under, textStyle
+
+                // A character wider than the cells left, as in a field one cell wide,
+                // cannot show. The cursor still needs its cell.
+                if Width.ofString shown = 0 || Width.ofString shown > left then
+                    " ", style
                 else
-                    match echo model under with
-                    | "" -> " ", textStyle
-                    | s -> s, textStyle
+                    shown, style
+
+            let left = left - Width.ofString underShown
+
+            // Whole characters after the cursor while they fit. A wide one that would
+            // cross the edge is left out.
+            let stop, _, _ =
+                spans
+                |> Array.filter (fun (a, _, _) -> a >= underEnd)
+                |> Array.fold
+                    (fun (stop, room, full) (_, b, c) ->
+                        if full || c > room then
+                            stop, room, true
+                        else
+                            b, room - c, false)
+                    (underEnd, left, false)
+
+            let after = v.Substring(underEnd, stop - underEnd)
+
+            let ghostTail =
+                if underShown = ghostHead then
+                    ghost.Substring(ghostHead.Length) |> fitCells (left - between underEnd stop)
+                else
+                    ""
 
             Ui.row
                 [ prompt
