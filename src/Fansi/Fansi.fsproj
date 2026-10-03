@@ -13,8 +13,8 @@
     <RepositoryUrl>https://github.com/ryuKKu-/fansi</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- Paket's pack task cannot build a .snupkg, so the PDB travels inside the DLL. Debuggers and SourceLink still find it. -->
+    <DebugType>embedded</DebugType>
     <!-- GitHub Actions sets CI=true. Local builds keep full paths for debugging. -->
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
