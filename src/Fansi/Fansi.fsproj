@@ -35,6 +35,7 @@
     <Compile Include="Components\Checkbox.fs" />
     <Compile Include="Components\ProgressBar.fs" />
     <Compile Include="Components\Spinner.fs" />
+    <Compile Include="Components\Viewport.fs" />
     <None Include="paket.references" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />

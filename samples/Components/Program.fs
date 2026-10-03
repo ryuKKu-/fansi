@@ -9,6 +9,7 @@ type Field =
     | Name
     | Secret
     | Fruits
+    | Help
     | Agree
     | Submit
 
@@ -22,6 +23,7 @@ type Model =
     { Name: TextInputComponent.Model
       Secret: TextInputComponent.Model
       Fruits: ListComponent.Model<string>
+      Help: ViewportComponent.Model
       Agree: CheckboxComponent.Model
       Submit: ButtonComponent.Model
       Timer: TimerComponent.Model
@@ -38,12 +40,28 @@ let private required s =
     else
         TextInputComponent.Valid
 
+let private helpText =
+    [ "Tab and Shift+Tab move focus between the boxes."
+      "Up and Down scroll this box one row at a time."
+      "PageUp and PageDown, or Space, scroll a page."
+      "Ctrl+U and Ctrl+D scroll half a page."
+      "Home and End jump to the top and the bottom."
+      "The mouse wheel scrolls this box too."
+      ""
+      "Long lines wrap to the width of the box and never split a character: 日本語 and 👋 move whole."
+      ""
+      "The title shows how far down you are." ]
+
 let init () =
     let name, _ = TextInputComponent.init ()
     let secret, _ = TextInputComponent.init ()
 
     let fruits, _ =
         ListComponent.init [ "apple"; "banana"; "cherry"; "damson"; "elderberry"; "fig" ] id 3
+
+    // Loaded through init, not setText: empty content counts as the bottom, and
+    // setText would then follow the end of the text.
+    let help, _ = ViewportComponent.init 36 3 (helpText |> List.map Ui.text)
 
     let agree, _ = CheckboxComponent.init "I have read the checklist"
     let submit, _ = ButtonComponent.init "Submit"
@@ -63,12 +81,13 @@ let init () =
             Placeholder = "password"
             Suggestions = [ "secret-password" ] }
       Fruits = fruits
+      Help = help
       Agree = agree
       Submit = submit
       Timer = timer
       Spinner = spinner
       Progress = ProgressBarComponent.init 20
-      Focus = Focus.ofList [ Name; Secret; Fruits; Agree; Submit ]
+      Focus = Focus.ofList [ Name; Secret; Fruits; Help; Agree; Submit ]
       Status = "" },
     Cmd.none
 
@@ -103,6 +122,9 @@ let private onKey (k: KeyEvent) model =
     | _, Fruits ->
         let fruits, _ = ListComponent.update (ListComponent.KeyInput k) model.Fruits
         { model with Fruits = fruits }, Cmd.none
+    | _, Help ->
+        let help, _ = ViewportComponent.update (ViewportComponent.KeyInput k) model.Help
+        { model with Help = help }, Cmd.none
     | (Key.Enter | Key.Char ' '), Agree ->
         let agree, _ = CheckboxComponent.update CheckboxComponent.Toggle model.Agree
         { model with Agree = agree }, Cmd.none
@@ -138,8 +160,15 @@ let update msg model =
     | App(SpinnerMsg m) ->
         let spinner, _ = SpinnerComponent.update m model.Spinner
         { model with Spinner = spinner }, Cmd.none
-    | Mouse _
-    | Resize _
+    // The help box is the only thing that scrolls, so the wheel always goes to it.
+    | Mouse m ->
+        let help, _ = ViewportComponent.update (ViewportComponent.MouseInput m) model.Help
+        { model with Help = help }, Cmd.none
+    // Half the screen, less a border and one cell of padding on each side.
+    | Resize(w, _) ->
+        { model with
+            Help = ViewportComponent.setSize (max 1 (w / 2 - 4)) 3 model.Help },
+        Cmd.none
     | FocusChanged _ -> model, Cmd.none
 
 let subscribe model =
@@ -169,7 +198,13 @@ let view model =
           TextInputComponent.view (on Secret) model.Secret
           |> framed (on Secret)
           |> Ui.len 3
-          ListComponent.view model.Fruits |> framed (on Fruits) |> Ui.len 5
+          Ui.row
+              [ ListComponent.view model.Fruits |> framed (on Fruits) |> Ui.fill 1
+                ViewportComponent.view model.Help
+                |> framed (on Help)
+                |> Ui.title $"Help {ViewportComponent.scrollPercent model.Help}%%"
+                |> Ui.fill 1 ]
+          |> Ui.len 5
           CheckboxComponent.view model.Agree |> framed (on Agree) |> Ui.len 3
           ButtonComponent.view (on Submit) model.Submit |> Ui.len 3
           Ui.row

@@ -124,6 +124,7 @@ For a timer of your own, `Sub.timer [ "clock" ] 1000<ms> Tick`.
 |---|---|
 | `TextInputComponent` | single-line input: scrolling, password echo, placeholder, undo, validation, suggestions |
 | `ListComponent` | a scrolling list with a marker and a selection |
+| `ViewportComponent` | a box of rich text that scrolls, wraps and follows a growing log |
 | `CheckboxComponent` | a toggle with a label |
 | `ButtonComponent` | a label in a box |
 | `TimerComponent` | a countdown |
@@ -135,13 +136,35 @@ The parent owns the model and routes messages to it. `TextInputComponent`
 takes keys as `KeyInput`, pastes as `Pasted` and programmatic changes as
 `SetValue`.
 
+`ViewportComponent` shows `Height` rows of its content, wrapped to `Width`
+cells. The content is one node per paragraph, so every style works:
+
+```fsharp
+let help, _ =
+    ViewportComponent.init 40 10 [ Ui.text "Keys" |> Ui.bold; Ui.text "Up and Down scroll." ]
+```
+
+`setContent` and `setText` replace the content. `setText` makes one paragraph
+per line and drops one trailing newline, so `"a\nb\n"` gives two paragraphs. A
+viewport at the bottom stays at the bottom, so a log follows new lines.
+Content that fits the box counts as both the top and the bottom, so new content
+or a smaller size then shows the end. To show a document from its start, load
+it through `init`, and send `Top` after `setContent`, `setText` or `setSize`.
+Call `setSize` when the terminal is resized.
+
+Set `Width` and `Height` to the inside of the box you put the viewport in. A
+narrower or shorter box wraps or cuts rows again. A paragraph's own size,
+border and padding are ignored, and its background colours only its text, not
+the whole row. Tabs and other control characters are dropped, so expand tabs
+before passing the text in.
+
 ## Samples
 
 - `samples/Layout`: one page per layout idea. Left and Right change page.
 - `samples/Dashboard`: three panels, real components and a focus ring. Its
   README has the dashboard checklist.
-- `samples/Components`: every component on one screen. Its README has the
-  component checklist.
+- `samples/Components`: every component on one screen, with a help box that
+  scrolls. Its README has the component checklist.
 - `samples/Interactive`: raw input, one event at a time. Its README has the
   terminal checklist.
 

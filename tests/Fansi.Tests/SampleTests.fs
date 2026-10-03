@@ -228,3 +228,31 @@ let ``the text page lines up wide characters and keeps each run's style`` () =
     Assert.True((Buffer.get buf 1 4).Continuation)
     Assert.Equal("a", (Buffer.get buf 17 4).Symbol)
     Assert.StartsWith("╭ Title ", lines[5])
+
+module ComponentsSample = Fansi.Samples.Components
+
+let private components () = ComponentsSample.init () |> fst
+
+let private tab model =
+    press Key.Tab model ComponentsSample.update
+
+[<Fact>]
+let ``the components sample renders at any size`` () =
+    for w, h in sizes do
+        let model, _ = ComponentsSample.update (Resize(w, h)) (components ())
+
+        render w h (ComponentsSample.view model) |> assertFills w h
+
+[<Fact>]
+let ``the help panel scrolls while it has focus`` () =
+    // Name, then Secret, then Fruits, then Help. The name starts empty, so Tab
+    // moves focus rather than completing a suggestion.
+    let focused = components () |> tab |> tab |> tab
+    Assert.Equal(ComponentsSample.Help, Focus.current focused.Focus)
+    let before = render 80 24 (ComponentsSample.view focused)
+    Assert.True(before |> List.exists (fun l -> l.Contains "Help 0%"))
+
+    let scrolled = press Key.PageDown focused ComponentsSample.update
+    let after = render 80 24 (ComponentsSample.view scrolled)
+    Assert.NotEqual<string list>(before, after)
+    Assert.False(after |> List.exists (fun l -> l.Contains "Help 0%"))

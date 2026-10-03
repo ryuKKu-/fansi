@@ -1,7 +1,8 @@
 # Components sample
 
-Every Fansi component on one screen: two text inputs, a list, a checkbox, a
-button, a timer, a spinner and a progress bar. One focus ring drives them all.
+Every Fansi component on one screen: two text inputs, a list, a help box that
+scrolls, a checkbox, a button, a timer, a spinner and a progress bar. One focus
+ring drives them all.
 
 The component logic has unit tests. What they cannot check is how it looks and
 feels in a real terminal. This checklist is for that.
@@ -69,9 +70,15 @@ item 1.
     is left behind.
 12. **List.** Up and Down move the marker. The list scrolls once you pass the
     third item. Enter selects the marked item; Enter again clears it.
-13. **Checkbox and button.** Space or Enter toggles the checkbox. Enter on the
+13. **Help box.** Tab to the box titled `Help 0%`. Up and Down scroll one row,
+    PageDown and Space a page, Ctrl+D and Ctrl+U half a page, and End and
+    Home jump to the ends. The percentage in the title follows. It never
+    scrolls past the last line. The mouse wheel scrolls it from anywhere. The
+    line with `日本語` and `👋` wraps without splitting either. Make the window
+    narrower: the text rewraps, and the line at the top stays in view.
+14. **Checkbox and button.** Space or Enter toggles the checkbox. Enter on the
     button writes a status line with the name, the password length, the fruit
     and the checkbox state.
-14. **Resize.** Make the window smaller and larger. The layout redraws with no
+15. **Resize.** Make the window smaller and larger. The layout redraws with no
     broken borders.
-15. **After Esc, type into the shell.** It echoes and line editing works.
+16. **After Esc, type into the shell.** It echoes and line editing works.
