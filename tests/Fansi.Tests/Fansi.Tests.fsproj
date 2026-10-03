@@ -26,6 +26,7 @@
     <Compile Include="Components\TextInputTests.fs" />
     <Compile Include="Components\ComponentTests.fs" />
     <Compile Include="Components\ViewportTests.fs" />
+    <Compile Include="Components\HelpTests.fs" />
     <Compile Include="Samples\SampleTests.fs" />
     <None Include="paket.references" />
   </ItemGroup>

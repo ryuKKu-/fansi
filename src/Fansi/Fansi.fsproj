@@ -53,6 +53,7 @@
     <Compile Include="Components\ProgressBar.fs" />
     <Compile Include="Components\Spinner.fs" />
     <Compile Include="Components\Viewport.fs" />
+    <Compile Include="Components\Help.fs" />
     <None Include="paket.references" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
