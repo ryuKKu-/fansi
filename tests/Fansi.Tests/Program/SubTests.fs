@@ -36,13 +36,20 @@ let ``map keeps the id and wraps what the subscription dispatches`` () =
 let ``a timer stops once disposed`` () =
     // A ref cell, because a closure cannot take the address of a mutable local.
     let count = ref 0
+    let fired = new ManualResetEventSlim(false)
     let _, start = Sub.timer [ "t" ] 10<ms> () |> List.head
-    let running = start (fun () -> Interlocked.Increment(&count.contents) |> ignore)
-    Thread.Sleep 100
+
+    let running =
+        start (fun () ->
+            Interlocked.Increment(&count.contents) |> ignore
+            fired.Set())
+
+    Assert.True(fired.Wait 2000, "the timer never fired")
     running.Dispose()
+    // A tick that was already running when Dispose was called may still finish.
+    Thread.Sleep 50
     let stoppedAt = Volatile.Read(&count.contents)
-    Thread.Sleep 100
-    Assert.True(stoppedAt > 0, "the timer never fired")
+    Thread.Sleep 200
     Assert.Equal(stoppedAt, Volatile.Read(&count.contents))
 
 [<Fact>]

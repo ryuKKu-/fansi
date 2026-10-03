@@ -206,6 +206,7 @@ module internal Program' =
 [<RequireQualifiedAccess>]
 module Sub =
     open System
+    open System.Threading
     open System.Timers
 
     let none<'msg> : Sub<'msg> = []
@@ -219,11 +220,21 @@ module Sub =
     let timer (id: string list) (interval: int<ms>) (msg: 'msg) : Sub<'msg> =
         let start dispatch =
             let timer = new Timer(float (max 1 (int interval)))
-            timer.Elapsed.Add(fun _ -> dispatch msg)
+            // Elapsed runs on the thread pool, so a tick queued before Stop can still
+            // arrive after Dispose returns. The flag drops it. A lock would not do:
+            // the program disposes subscriptions while it holds its pump lock, and a
+            // tick waiting on that lock would never let Dispose finish.
+            let stopped = ref false
+
+            timer.Elapsed.Add(fun _ ->
+                if not (Volatile.Read(&stopped.contents)) then
+                    dispatch msg)
+
             timer.Start()
 
             { new IDisposable with
                 member _.Dispose() =
+                    Volatile.Write(&stopped.contents, true)
                     timer.Stop()
                     timer.Dispose() }
 
