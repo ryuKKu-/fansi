@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # setup-dotnet's own cache needs packages.lock.json, which Paket does not write.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('paket.lock', '.config/dotnet-tools.json') }}
+
+      - run: dotnet tool restore
+      - run: dotnet paket restore
+
+      # Windows checkouts can turn line endings into CRLF, which Fantomas would flag.
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: dotnet fantomas --check src tests samples
+
+      - run: dotnet build -c Release -warnaserror
+      - run: dotnet test tests/Fansi.Tests -c Release --no-build
+
+  pack:
+    name: Pack
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('paket.lock', '.config/dotnet-tools.json') }}
+
+      - run: dotnet tool restore
+      - run: dotnet paket restore
+      - run: dotnet pack src/Fansi -c Release -o artifacts
+
+      # A later paket update must not raise the floor every user inherits.
+      - name: Check the FSharp.Core floor
+        run: |
+          unzip -p artifacts/Fansi.Tui.*.nupkg Fansi.Tui.nuspec > nuspec.xml
+          grep -q '<dependency id="FSharp.Core" version="8.0.400"' nuspec.xml || {
+            echo "The package no longer asks for FSharp.Core >= 8.0.400:"
+            grep dependency nuspec.xml
+            exit 1
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: artifacts/
+
+  actionlint:
+    name: Check workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
