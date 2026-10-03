@@ -5,28 +5,28 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="GeometryTests.fs" />
-    <Compile Include="StyleTests.fs" />
-    <Compile Include="PropsTests.fs" />
-    <Compile Include="SolverTests.fs" />
-    <Compile Include="WidthTests.fs" />
-    <Compile Include="RunsTests.fs" />
+    <Compile Include="Core\GeometryTests.fs" />
+    <Compile Include="Core\StyleTests.fs" />
+    <Compile Include="Core\PropsTests.fs" />
+    <Compile Include="Layout\SolverTests.fs" />
+    <Compile Include="Text\WidthTests.fs" />
+    <Compile Include="Text\RunsTests.fs" />
     <Compile Include="UiTests.fs" />
-    <Compile Include="LayoutTests.fs" />
-    <Compile Include="BufferTests.fs" />
-    <Compile Include="PaintTests.fs" />
-    <Compile Include="RendererTests.fs" />
-    <Compile Include="InputParserTests.fs" />
-    <Compile Include="TerminalTests.fs" />
-    <Compile Include="ProgramTests.fs" />
-    <Compile Include="KeymapTests.fs" />
-    <Compile Include="FocusTests.fs" />
-    <Compile Include="SubTests.fs" />
-    <Compile Include="CursorTests.fs" />
-    <Compile Include="TextInputTests.fs" />
-    <Compile Include="ComponentTests.fs" />
-    <Compile Include="ViewportTests.fs" />
-    <Compile Include="SampleTests.fs" />
+    <Compile Include="Layout\LayoutTests.fs" />
+    <Compile Include="Rendering\BufferTests.fs" />
+    <Compile Include="Rendering\PaintTests.fs" />
+    <Compile Include="Rendering\RendererTests.fs" />
+    <Compile Include="Terminal\InputParserTests.fs" />
+    <Compile Include="Terminal\TerminalTests.fs" />
+    <Compile Include="Program\ProgramTests.fs" />
+    <Compile Include="Program\KeymapTests.fs" />
+    <Compile Include="Program\FocusTests.fs" />
+    <Compile Include="Program\SubTests.fs" />
+    <Compile Include="Program\CursorTests.fs" />
+    <Compile Include="Components\TextInputTests.fs" />
+    <Compile Include="Components\ComponentTests.fs" />
+    <Compile Include="Components\ViewportTests.fs" />
+    <Compile Include="Samples\SampleTests.fs" />
     <None Include="paket.references" />
   </ItemGroup>
   <ItemGroup>
