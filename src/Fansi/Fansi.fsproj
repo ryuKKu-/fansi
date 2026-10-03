@@ -3,9 +3,26 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Fansi</RootNamespace>
+    <PackageId>Fansi.Tui</PackageId>
+    <Version>0.0.0</Version> <!-- x-release-please-version -->
+    <Authors>Luc Raymond</Authors>
+    <Description>Terminal user interfaces in F#, with the Elm architecture.</Description>
+    <PackageTags>tui terminal console elmish fsharp</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/ryuKKu-/fansi</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- GitHub Actions sets CI=true. Local builds keep full paths for debugging. -->
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Fansi.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Core\Geometry.fs" />

@@ -6,6 +6,18 @@ You write a model, an `update` and a `view`. Fansi puts the terminal in raw
 mode, turns keys, mouse, paste and resize into messages, lays out the view with
 integer constraints and repaints only the cells that changed.
 
+## Install
+
+```
+dotnet add package Fansi.Tui
+```
+
+The package is `Fansi.Tui`, and the namespace is `Fansi`:
+
+```fsharp
+open Fansi
+```
+
 ## A counter
 
 ```fsharp
@@ -205,5 +217,10 @@ The build has no warnings, and it should stay that way.
 
 Commit messages are one line in the
 [conventional commits](https://www.conventionalcommits.org) style:
-`feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `test: ...`,
-`chore: ...`. Releases and the changelog are worked out from them.
+`feat: ...`, `fix: ...`, `perf: ...`, `docs: ...`, `refactor: ...`,
+`test: ...`, `chore: ...`. Releases and the changelog are worked out from
+them: `feat`, `fix` and `perf` make a release, the others do not.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

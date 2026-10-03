@@ -3,7 +3,7 @@ RESTRICTION: == net10.0
 NUGET
   remote: https://api.nuget.org/v3/index.json
     Elmish (5.0.2)
-    FSharp.Core (11.0.100)
+    FSharp.Core (8.0.400)
 
 GROUP tests
 STORAGE: NONE
