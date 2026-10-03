@@ -172,6 +172,23 @@ before passing the text in.
 dotnet run --project samples/Dashboard
 ```
 
+## Project layout
+
+The library lives in `src/Fansi`, one folder per concern:
+
+| Folder | What it holds |
+|---|---|
+| `Core` | geometry, styles, props and the node tree |
+| `Text` | display width and styled runs of text |
+| `Ui.fs` | the functions that build a view |
+| `Layout` | the constraint solver and the layout pass |
+| `Rendering` | the cell buffer, painting and the diffing renderer |
+| `Terminal` | input events, the input parser and raw mode |
+| `Program` | the Elm loop, subscriptions, keymaps, focus and the cursor |
+| `Components` | ready-made components |
+
+`tests/Fansi.Tests` uses the same folders, plus `Samples` for the sample tests.
+
 ## Building
 
 ```
@@ -179,4 +196,14 @@ dotnet tool restore
 dotnet paket restore
 dotnet build
 dotnet test tests/Fansi.Tests
+dotnet fantomas src tests samples
 ```
+
+The build has no warnings, and it should stay that way.
+
+## Contributing
+
+Commit messages are one line in the
+[conventional commits](https://www.conventionalcommits.org) style:
+`feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `test: ...`,
+`chore: ...`. Releases and the changelog are worked out from them.
