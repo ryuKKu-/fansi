@@ -10,6 +10,7 @@ group tests
     storage: none
     framework: auto-detect
 
+    nuget FSharp.Core >= 8.0.400 lowest_matching: true
     nuget xunit
     nuget xunit.runner.visualstudio
     nuget Microsoft.NET.Test.Sdk

@@ -60,6 +60,13 @@ jobs:
           VERSION: ${{ needs.release-please.outputs.version }}
         run: test -f "artifacts/Fansi.Tui.${VERSION}.nupkg"
 
+      # Before the login, so a failed push can be redone by hand from this file.
+      - name: Attach the package to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release upload "$TAG" artifacts/*.nupkg --clobber
+
       # The key lasts one hour, so log in right before pushing.
       - id: login
         uses: NuGet/login@v1
@@ -74,9 +81,3 @@ jobs:
           --api-key "$NUGET_API_KEY"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
-
-      - name: Attach the package to the GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-please.outputs.tag_name }}
-        run: gh release upload "$TAG" artifacts/*.nupkg --clobber
