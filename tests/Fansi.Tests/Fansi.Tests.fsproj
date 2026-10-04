@@ -36,6 +36,7 @@
     <ProjectReference Include="..\..\samples\Layout\Layout.fsproj" />
     <ProjectReference Include="..\..\samples\Dashboard\Dashboard.fsproj" />
     <ProjectReference Include="..\..\samples\Components\Components.fsproj" />
+    <ProjectReference Include="..\..\samples\Table\Table.fsproj" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

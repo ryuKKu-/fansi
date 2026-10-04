@@ -14,6 +14,7 @@
     <Project Path="samples/Components/Components.fsproj" />
     <Project Path="samples/Layout/Layout.fsproj" />
     <Project Path="samples/Dashboard/Dashboard.fsproj" />
+    <Project Path="samples/Table/Table.fsproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Fansi.Tests/Fansi.Tests.fsproj" />

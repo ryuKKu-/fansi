@@ -256,3 +256,31 @@ let ``the help panel scrolls while it has focus`` () =
     let after = render 80 24 (ComponentsSample.view scrolled)
     Assert.NotEqual<string list>(before, after)
     Assert.False(after |> List.exists (fun l -> l.Contains "Help 0%"))
+
+module TableSample = Fansi.Samples.Table
+
+let private tableSample () = TableSample.init () |> fst
+
+[<Fact>]
+let ``the table sample renders at any size`` () =
+    for w, h in sizes do
+        let resized = TableSample.update (Resize(w, h)) (tableSample ()) |> fst
+        render w h (TableSample.view resized) |> assertFills w h
+
+[<Fact>]
+let ``down moves the selection in the table sample`` () =
+    let before = render 80 24 (TableSample.view (tableSample ()))
+    Assert.True(before |> List.exists (fun l -> l.Contains "selected: init"))
+
+    let moved = press Key.Down (tableSample ()) TableSample.update
+    let after = render 80 24 (TableSample.view moved)
+    Assert.True(after |> List.exists (fun l -> l.Contains "selected: kworker"))
+
+[<Fact>]
+let ``question mark switches the table sample to full help`` () =
+    let before = render 80 24 (TableSample.view (tableSample ()))
+    Assert.False(before |> List.exists (fun l -> l.Contains "first/last"))
+
+    let full = press (Key.Char '?') (tableSample ()) TableSample.update
+    let after = render 80 24 (TableSample.view full)
+    Assert.True(after |> List.exists (fun l -> l.Contains "first/last"))

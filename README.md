@@ -137,6 +137,8 @@ For a timer of your own, `Sub.timer [ "clock" ] 1000<ms> Tick`.
 | `TextInputComponent` | single-line input: scrolling, password echo, placeholder, undo, validation, suggestions |
 | `ListComponent` | a scrolling list with a marker and a selection |
 | `ViewportComponent` | a box of rich text that scrolls, wraps and follows a growing log |
+| `TableComponent` | rows of styled cells under a header, with a cursor row |
+| `HelpComponent` | a key help line, or a full grid, from `Keymap` bindings |
 | `CheckboxComponent` | a toggle with a label |
 | `ButtonComponent` | a label in a box |
 | `TimerComponent` | a countdown |
@@ -177,6 +179,8 @@ before passing the text in.
   README has the dashboard checklist.
 - `samples/Components`: every component on one screen, with a help box that
   scrolls. Its README has the component checklist.
+- `samples/Table`: a table of processes with a help line. Its README has the
+  table checklist.
 - `samples/Interactive`: raw input, one event at a time. Its README has the
   terminal checklist.
 
