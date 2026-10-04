@@ -10,7 +10,7 @@ let private render w h node = Paint.render w h node |> Buffer.toLines
 [<Fact>]
 let ``the timer shows the remaining time`` () =
     let model, _ = TimerComponent.init 1000<ms> (TimeSpan.FromSeconds 5.0)
-    Assert.Equal("\u23f1 00:00:05.000", (render 20 1 (TimerComponent.view model)).Head.TrimEnd())
+    Assert.Equal("00:00:05.000", (render 20 1 (TimerComponent.view model)).Head.TrimEnd())
 
 [<Fact>]
 let ``the button shows its label inside a border`` () =

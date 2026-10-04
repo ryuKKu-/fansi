@@ -52,11 +52,11 @@ module TimerComponent =
         | StartStopMsg _
         | TimedOutMsg _ -> model, Cmd.none
 
+    let private fmt = @"hh\:mm\:ss\.fff"
+
     let view model : Node =
-        let fmt = @"hh\:mm\:ss\.fff"
         let timeStr = model.Timeout.ToString(fmt)
-        let label = if model.Running then "⏱ " + timeStr else "⏸ " + timeStr
-        Ui.text label |> Ui.style model.Style
+        Ui.text timeStr |> Ui.style model.Style
 
     let subscribe model =
         if model.Running then
