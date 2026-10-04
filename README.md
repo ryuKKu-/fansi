@@ -8,7 +8,7 @@ integer constraints and repaints only the cells that changed.
 
 ## Install
 
-```
+```shell
 dotnet add package Fansi.Tui
 ```
 
@@ -223,4 +223,4 @@ them: `feat`, `fix` and `perf` make a release, the others do not.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/ryuKKu-/fansi/blob/master/LICENSE).
