@@ -38,10 +38,16 @@ let ``after dispatches its message once the delay passes`` () =
 [<Fact>]
 let ``after fires once, not repeatedly`` () =
     let mutable count = 0
+    use fired = new ManualResetEventSlim(false)
 
     Cmd.after 20<ms> ()
-    |> List.iter (fun call -> call (fun () -> Interlocked.Increment(&count) |> ignore))
+    |> List.iter (fun call ->
+        call (fun () ->
+            Interlocked.Increment(&count) |> ignore
+            fired.Set()))
 
+    Assert.True(fired.Wait 2000, "the delayed message never arrived")
+    // Long enough for a second firing to show up if there were one.
     Thread.Sleep 200
     Assert.Equal(1, count)
 

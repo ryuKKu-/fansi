@@ -1,5 +1,6 @@
 module Fansi.Tests.SubTests
 
+open System
 open System.Threading
 open Xunit
 open Elmish
@@ -36,7 +37,7 @@ let ``map keeps the id and wraps what the subscription dispatches`` () =
 let ``a timer stops once disposed`` () =
     // A ref cell, because a closure cannot take the address of a mutable local.
     let count = ref 0
-    let fired = new ManualResetEventSlim(false)
+    use fired = new ManualResetEventSlim(false)
     let _, start = Sub.timer [ "t" ] 10<ms> () |> List.head
 
     let running =
@@ -46,9 +47,23 @@ let ``a timer stops once disposed`` () =
 
     Assert.True(fired.Wait 2000, "the timer never fired")
     running.Dispose()
-    // A tick that was already running when Dispose was called may still finish.
-    Thread.Sleep 50
-    let stoppedAt = Volatile.Read(&count.contents)
+    // A tick that was already running when Dispose was called may still finish,
+    // so wait for the count to settle before checking that it stays put.
+    let read () = Volatile.Read(&count.contents)
+    let deadline = DateTime.UtcNow.AddSeconds 2.0
+    let mutable stable = 0
+    let mutable last = read ()
+
+    while stable < 3 do
+        if DateTime.UtcNow > deadline then
+            failwith "the timer kept ticking for 2 s after Dispose"
+
+        Thread.Sleep 50
+        let now = read ()
+        stable <- if now = last then stable + 1 else 0
+        last <- now
+
+    let stoppedAt = last
     Thread.Sleep 200
     Assert.Equal(stoppedAt, Volatile.Read(&count.contents))
 
