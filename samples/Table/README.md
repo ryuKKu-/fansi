@@ -12,8 +12,9 @@ and feels in a real terminal. This checklist is for that.
 
 ## Acceptance checklist
 
-1. **Columns.** The table has a single-line border with junctions. Name fills the room left by CPU, Memory and Status. The
-   header is bold. Status is green for running processes.
+1. **Columns.** The table has a single-line border with junctions. Name fills
+   the room left by CPU, Memory and Status. The header is bold. Status is green
+   for running processes.
 2. **Cursor.** Up and Down move the cyan row, PageUp and PageDown a page,
    Home and End to the first and last process. The status line follows.
 3. **Scrolling.** Move past the bottom of the screen. The table scrolls just

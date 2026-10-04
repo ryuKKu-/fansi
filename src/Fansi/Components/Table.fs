@@ -140,13 +140,15 @@ module TableComponent =
 
     let private borderChars (model: Model<'row>) = Layout.Border.chars model.Border
 
-    // Corners, horizontal and vertical come from Layout.Border.chars.
+    // Layout.Border.chars only knows boxes, so the table keeps its own junctions.
     let private junctions style =
         match style with
         | Double -> "╦", "╬", "╩", "╠", "╣"
         | Heavy -> "┳", "╋", "┻", "┣", "┫"
         | Ascii -> "+", "+", "+", "+", "+"
-        | _ -> "┬", "┼", "┴", "├", "┤"
+        | Single
+        | Rounded
+        | NoBorder -> "┬", "┼", "┴", "├", "┤"
 
     let private columnWidths (model: Model<'row>) =
         let titles = model.Columns |> List.map (fun c -> Width.ofString c.Title)
@@ -269,11 +271,11 @@ module TableComponent =
             | Some c ->
                 let blanks = List.replicate missing (line Style.Default (rowRuns m widths []))
                 let tj, x, bj, lj, rj = junctions m.Border
-                let edge' = edge m widths c
-                let top = edge' (string c.TopLeft) tj (string c.TopRight) |> line Style.Default
-                let separator = edge' lj x rj |> line Style.Default
+                let edgeLine = edge m widths c
+                let top = edgeLine (string c.TopLeft) tj (string c.TopRight) |> line Style.Default
+                let separator = edgeLine lj x rj |> line Style.Default
 
                 let bottom =
-                    edge' (string c.BottomLeft) bj (string c.BottomRight) |> line Style.Default
+                    edgeLine (string c.BottomLeft) bj (string c.BottomRight) |> line Style.Default
 
                 Ui.col ([ top; header; separator ] @ shown @ blanks @ [ bottom ])
