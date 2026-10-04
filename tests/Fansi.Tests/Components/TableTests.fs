@@ -12,7 +12,9 @@ type private Proc = { Name: string; Cpu: int }
 let private render w h node =
     Paint.render w h node |> Buffer.toLines |> List.map (fun l -> l.TrimEnd())
 
-let private column title width : T.Column = { T.Title = title; T.Width = width }
+let private column title width : T.Column =
+    { T.Column.Title = title
+      T.Column.Width = width }
 
 let private procs n =
     [ for i in 1..n -> { Name = $"p{i}"; Cpu = i } ]
@@ -20,11 +22,14 @@ let private procs n =
 let private procColumns = [ column "Name" (Len 6); column "CPU" (Fill 1) ]
 
 let private table w h rows =
-    T.init procColumns (fun (p: Proc) -> [ Ui.text p.Name; Ui.text (string p.Cpu) ]) w h rows
-    |> fst
+    let m, _ =
+        T.init procColumns (fun (p: Proc) -> [ Ui.text p.Name; Ui.text (string p.Cpu) ]) w h rows
+
+    { m with Border = NoBorder }
 
 let private strings w h columns (rows: string list list) =
-    T.init columns (List.map Ui.text) w h rows |> fst
+    let m, _ = T.init columns (List.map Ui.text) w h rows
+    { m with Border = NoBorder }
 
 let private send msg m = T.update msg m |> fst
 
@@ -197,16 +202,28 @@ let ``no row is wider than a very small width`` () =
     for row in Node.children (T.view m) do
         Assert.True(Runs.width (Runs.ofNode Style.Default row) <= 1)
 
+let private styles = [| NoBorder; Single; Double; Rounded; Heavy; Ascii |]
+
 let private moves =
     [| Key.Up; Key.Down; Key.PageUp; Key.PageDown; Key.Home; Key.End |]
 
 [<Property>]
-let ``the cursor stays in range and on screen`` (names: string list) (width: int) (height: int) (steps: int list) =
+let ``the cursor stays in range and on screen``
+    (names: string list)
+    (width: int)
+    (height: int)
+    (border: int)
+    (steps: int list)
+    =
     let rows = names |> List.map (fun n -> [ (if isNull n then "" else n); "x" ])
 
     let columns = [ column "A" (Len 3); column "B" (Fill 1); column "C" (Pct 30) ]
 
-    let start = strings (abs (width % 30)) (abs (height % 6)) columns rows
+    let style = styles[abs (border % styles.Length)]
+
+    let start =
+        { strings (abs (width % 30)) (abs (height % 6)) columns rows with
+            Border = style }
 
     let m = steps |> List.fold (fun m k -> key moves[abs (k % moves.Length)] m) start
 
@@ -229,4 +246,115 @@ let ``the cursor stays in range and on screen`` (names: string list) (width: int
         || shown
            |> List.forall (fun row -> Runs.width (Runs.ofNode Style.Default row) <= m.Width)
 
-    inRange && onScreen && shown.Length = 1 + max 0 m.Height && fits
+    inRange
+    && onScreen
+    && shown.Length = (if style = NoBorder then 1 else 4) + max 0 m.Height
+    && fits
+
+let private bordered w h columns (rows: string list list) =
+    let m, _ = T.init columns (List.map Ui.text) w h rows
+    m
+
+let private ab = [ column "A" (Len 3); column "B" (Len 2) ]
+
+[<Fact>]
+let ``a new table draws a single grid`` () =
+    let m = bordered 8 2 ab [ [ "x"; "y" ] ]
+
+    Assert.Equal<string list>(
+        [ "┌───┬──┐"; "│A  │B │"; "├───┼──┤"; "│x  │y │"; "│   │  │"; "└───┴──┘" ],
+        render 10 6 (T.view m)
+    )
+
+[<Theory>]
+[<InlineData("Double", "╔═══╦══╗", "╠═══╬══╣", "╚═══╩══╝", "║")>]
+[<InlineData("Rounded", "╭───┬──╮", "├───┼──┤", "╰───┴──╯", "│")>]
+[<InlineData("Heavy", "┏━━━┳━━┓", "┣━━━╋━━┫", "┗━━━┻━━┛", "┃")>]
+[<InlineData("Ascii", "+---+--+", "+---+--+", "+---+--+", "|")>]
+let ``each style draws its own corners and junctions``
+    (name: string, top: string, sep: string, bottom: string, bar: string)
+    =
+    let style =
+        match name with
+        | "Double" -> Double
+        | "Rounded" -> Rounded
+        | "Heavy" -> Heavy
+        | _ -> Ascii
+
+    let m =
+        { bordered 8 1 ab [] with
+            Border = style }
+
+    let lines = render 8 5 (T.view m)
+    Assert.Equal<string list>([ top; $"{bar}A  {bar}B {bar}"; sep; $"{bar}   {bar}  {bar}"; bottom ], lines)
+
+[<Fact>]
+let ``columns share the width less the borders`` () =
+    let m = bordered 12 0 [ column "A" (Len 3); column "B" (Fill 1) ] []
+    // 12 less 3 borders leaves 9: A takes 3, B the other 6.
+    Assert.Equal<string list>(
+        [ "┌───┬──────┐"; "│A  │B     │"; "├───┼──────┤"; "└───┴──────┘" ],
+        render 12 4 (T.view m)
+    )
+
+[<Fact>]
+let ``no line is wider than a tiny width`` () =
+    let m =
+        bordered 3 2 [ column "A" (Fill 1); column "B" (Fill 1); column "C" (Fill 1) ] [ [ "a"; "b"; "c" ] ]
+
+    let rows = Node.children (T.view m)
+    Assert.Equal(6, rows.Length)
+
+    for row in rows do
+        Assert.True(Runs.width (Runs.ofNode Style.Default row) <= 3)
+
+[<Fact>]
+let ``missing rows are blank inside the box`` () =
+    let m = bordered 8 2 ab [ [ "x"; "y" ] ]
+    let lines = render 8 6 (T.view m)
+    Assert.Equal("│x  │y │", lines[3])
+    Assert.Equal("│   │  │", lines[4])
+
+[<Fact>]
+let ``a width of zero wraps the borders round the asked widths`` () =
+    let m = bordered 0 1 [ column "Name" (Fill 1); column "C" (Len 3) ] [ [ "x"; "y" ] ]
+
+    Assert.Equal<string list>(
+        [ "┌────┬───┐"; "│Name│C  │"; "├────┼───┤"; "│x   │y  │"; "└────┴───┘" ],
+        render 20 5 (T.view m)
+    )
+
+[<Fact>]
+let ``the border colour applies to border cells only`` () =
+    let m =
+        { bordered 8 1 ab [ [ "x"; "y" ] ] with
+            BorderColor = Color.BrightBlack }
+
+    let coloured = Paint.render 8 5 (T.view m)
+    Assert.Equal(Color.BrightBlack, (Buffer.get coloured 0 0).Style.FgColor)
+    Assert.Equal(Color.BrightBlack, (Buffer.get coloured 4 1).Style.FgColor)
+    Assert.Equal(Color.BrightBlack, (Buffer.get coloured 7 4).Style.FgColor)
+    Assert.Equal(Color.Default, (Buffer.get coloured 1 1).Style.FgColor)
+
+    let plain = Paint.render 8 5 (T.view (bordered 8 1 ab []))
+    Assert.Equal(Color.Default, (Buffer.get plain 0 0).Style.FgColor)
+
+[<Fact>]
+let ``a cell keeps its own colour inside a coloured border`` () =
+    let m, _ =
+        T.init ab (fun (_: string) -> [ Ui.text "x" |> Ui.fg Color.Green; Ui.text "y" ]) 8 1 [ "r" ]
+
+    let buffer = Paint.render 8 5 (T.view { m with BorderColor = Color.Red })
+    Assert.Equal(Color.Green, (Buffer.get buffer 1 3).Style.FgColor)
+    Assert.Equal(Color.Red, (Buffer.get buffer 0 3).Style.FgColor)
+
+[<Fact>]
+let ``the cursor row background covers the inner width`` () =
+    let m = bordered 8 2 ab [ [ "x"; "y" ]; [ "z"; "w" ] ]
+    let buffer = Paint.render 8 6 (T.view m)
+
+    for x in 0..7 do
+        Assert.Equal(Color.Cyan, (Buffer.get buffer x 3).Style.BgColor)
+
+    Assert.Equal(Color.Default, (Buffer.get buffer 0 4).Style.BgColor)
+    Assert.Equal(Color.Default, (Buffer.get buffer 0 2).Style.BgColor)

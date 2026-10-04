@@ -71,14 +71,14 @@ let private fullHelp =
     [ [ keys.Up; keys.Down; keys.Page; keys.Ends ]; [ keys.Help; keys.Quit ] ]
 
 let private columns: TableComponent.Column list =
-    [ { TableComponent.Title = "Name"
-        TableComponent.Width = Fill 1 }
-      { TableComponent.Title = "CPU"
-        TableComponent.Width = Len 5 }
-      { TableComponent.Title = "Memory"
-        TableComponent.Width = Len 8 }
-      { TableComponent.Title = "Status"
-        TableComponent.Width = Pct 15 } ]
+    [ { TableComponent.Column.Title = "Name"
+        TableComponent.Column.Width = Fill 1 }
+      { TableComponent.Column.Title = "CPU"
+        TableComponent.Column.Width = Len 5 }
+      { TableComponent.Column.Title = "Memory"
+        TableComponent.Column.Width = Len 8 }
+      { TableComponent.Column.Title = "Status"
+        TableComponent.Column.Width = Pct 15 } ]
 
 let private cells (p: Proc) =
     [ Ui.text p.Name
@@ -96,8 +96,9 @@ type Model =
     { Table: TableComponent.Model<Proc>
       Help: HelpComponent.Model }
 
-// The title, the header, the status line and up to four rows of full help.
-let private chrome = 7
+// The title, the border's three lines, the header, the status line and up to
+// four rows of full help.
+let private chrome = 10
 
 let init () =
     let table, _ = TableComponent.init columns cells 80 (24 - chrome) processes
@@ -132,7 +133,7 @@ let update (msg: FansiMsg<unit>) (model: Model) =
 let view model =
     let selected =
         TableComponent.selectedRow model.Table
-        |> Option.map (fun p -> p.Name)
+        |> Option.map _.Name
         |> Option.defaultValue "nothing"
 
     Ui.col
