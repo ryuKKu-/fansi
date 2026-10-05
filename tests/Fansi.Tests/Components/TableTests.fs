@@ -258,20 +258,20 @@ let private bordered w h columns (rows: string list list) =
 let private ab = [ column "A" (Len 3); column "B" (Len 2) ]
 
 [<Fact>]
-let ``a new table draws a single grid`` () =
+let ``a new table draws a single outer box`` () =
     let m = bordered 8 2 ab [ [ "x"; "y" ] ]
 
     Assert.Equal<string list>(
-        [ "┌───┬──┐"; "│A  │B │"; "├───┼──┤"; "│x  │y │"; "│   │  │"; "└───┴──┘" ],
+        [ "┌──────┐"; "│A   B │"; "├──────┤"; "│x   y │"; "│      │"; "└──────┘" ],
         render 10 6 (T.view m)
     )
 
 [<Theory>]
-[<InlineData("Double", "╔═══╦══╗", "╠═══╬══╣", "╚═══╩══╝", "║")>]
-[<InlineData("Rounded", "╭───┬──╮", "├───┼──┤", "╰───┴──╯", "│")>]
-[<InlineData("Heavy", "┏━━━┳━━┓", "┣━━━╋━━┫", "┗━━━┻━━┛", "┃")>]
-[<InlineData("Ascii", "+---+--+", "+---+--+", "+---+--+", "|")>]
-let ``each style draws its own corners and junctions``
+[<InlineData("Double", "╔══════╗", "╠══════╣", "╚══════╝", "║")>]
+[<InlineData("Rounded", "╭──────╮", "├──────┤", "╰──────╯", "│")>]
+[<InlineData("Heavy", "┏━━━━━━┓", "┣━━━━━━┫", "┗━━━━━━┛", "┃")>]
+[<InlineData("Ascii", "+------+", "+------+", "+------+", "|")>]
+let ``each style draws its own corners and tees``
     (name: string, top: string, sep: string, bottom: string, bar: string)
     =
     let style =
@@ -286,14 +286,14 @@ let ``each style draws its own corners and junctions``
             Border = style }
 
     let lines = render 8 5 (T.view m)
-    Assert.Equal<string list>([ top; $"{bar}A  {bar}B {bar}"; sep; $"{bar}   {bar}  {bar}"; bottom ], lines)
+    Assert.Equal<string list>([ top; $"{bar}A   B {bar}"; sep; $"{bar}      {bar}"; bottom ], lines)
 
 [<Fact>]
 let ``columns share the width less the borders`` () =
     let m = bordered 12 0 [ column "A" (Len 3); column "B" (Fill 1) ] []
-    // 12 less 3 borders leaves 9: A takes 3, B the other 6.
+    // 12 less 2 borders and 1 gap leaves 9: A takes 3, B the other 6.
     Assert.Equal<string list>(
-        [ "┌───┬──────┐"; "│A  │B     │"; "├───┼──────┤"; "└───┴──────┘" ],
+        [ "┌──────────┐"; "│A   B     │"; "├──────────┤"; "└──────────┘" ],
         render 12 4 (T.view m)
     )
 
@@ -312,15 +312,15 @@ let ``no line is wider than a tiny width`` () =
 let ``missing rows are blank inside the box`` () =
     let m = bordered 8 2 ab [ [ "x"; "y" ] ]
     let lines = render 8 6 (T.view m)
-    Assert.Equal("│x  │y │", lines[3])
-    Assert.Equal("│   │  │", lines[4])
+    Assert.Equal("│x   y │", lines[3])
+    Assert.Equal("│      │", lines[4])
 
 [<Fact>]
 let ``a width of zero wraps the borders round the asked widths`` () =
     let m = bordered 0 1 [ column "Name" (Fill 1); column "C" (Len 3) ] [ [ "x"; "y" ] ]
 
     Assert.Equal<string list>(
-        [ "┌────┬───┐"; "│Name│C  │"; "├────┼───┤"; "│x   │y  │"; "└────┴───┘" ],
+        [ "┌────────┐"; "│Name C  │"; "├────────┤"; "│x    y  │"; "└────────┘" ],
         render 20 5 (T.view m)
     )
 
@@ -332,7 +332,7 @@ let ``the border colour applies to border cells only`` () =
 
     let coloured = Paint.render 8 5 (T.view m)
     Assert.Equal(Color.BrightBlack, (Buffer.get coloured 0 0).Style.FgColor)
-    Assert.Equal(Color.BrightBlack, (Buffer.get coloured 4 1).Style.FgColor)
+    Assert.Equal(Color.BrightBlack, (Buffer.get coloured 7 1).Style.FgColor)
     Assert.Equal(Color.BrightBlack, (Buffer.get coloured 7 4).Style.FgColor)
     Assert.Equal(Color.Default, (Buffer.get coloured 1 1).Style.FgColor)
 
@@ -349,12 +349,15 @@ let ``a cell keeps its own colour inside a coloured border`` () =
     Assert.Equal(Color.Red, (Buffer.get buffer 0 3).Style.FgColor)
 
 [<Fact>]
-let ``the cursor row background covers the inner width`` () =
+let ``the cursor row background covers the inner width but not the bars`` () =
     let m = bordered 8 2 ab [ [ "x"; "y" ]; [ "z"; "w" ] ]
     let buffer = Paint.render 8 6 (T.view m)
 
-    for x in 0..7 do
+    for x in 1..6 do
         Assert.Equal(Color.Cyan, (Buffer.get buffer x 3).Style.BgColor)
+
+    Assert.Equal(Color.Default, (Buffer.get buffer 0 3).Style.BgColor)
+    Assert.Equal(Color.Default, (Buffer.get buffer 7 3).Style.BgColor)
 
     Assert.Equal(Color.Default, (Buffer.get buffer 0 4).Style.BgColor)
     Assert.Equal(Color.Default, (Buffer.get buffer 0 2).Style.BgColor)

@@ -8,7 +8,6 @@
   <ItemGroup>
     <Compile Include="Program.fs" />
     <None Include="paket.references" />
-    <Content Include="README.md" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fansi\Fansi.fsproj" />

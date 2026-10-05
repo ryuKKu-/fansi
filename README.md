@@ -145,7 +145,7 @@ For a timer of your own, `Sub.timer [ "clock" ] 1000<ms> Tick`.
 | `SpinnerComponent` | an animated spinner |
 | `ProgressBarComponent` | a bar filled in proportion |
 
-The table draws a grid border, `Single` by default. Set `Border` (any `BorderStyle`, `NoBorder` for none) and `BorderColor` to change it.
+The table draws an outer border, with a line under the header, `Single` by default. Set `Border` (any `BorderStyle`, `NoBorder` for none) and `BorderColor` to change it.
 
 A component is a model, an `update`, a `view`, and a `subscribe` if it ticks.
 The parent owns the model and routes messages to it. `TextInputComponent`
