@@ -60,8 +60,8 @@ module Layout =
             | None -> 0
             | Some _ -> 1
 
-    /// Break text into display lines. Explicit newlines always break; anything
-    /// wider than maxWidth cells is cut hard, with no word awareness.
+    /// Break text into display lines. Explicit newlines always break.
+    /// Text wider than maxWidth cells is cut hard, with no word awareness.
     let wrapText (text: string) (maxWidth: int) : string list =
         Runs.wrap [ { Text = text; Style = Style.Default } ] maxWidth
         |> List.map (fun row -> row |> List.map (fun r -> r.Text) |> String.concat "")
@@ -69,7 +69,7 @@ module Layout =
     let private chrome (p: Props) =
         let bt = Border.thickness p.Border
 
-        // Margin and padding are unconstrained ints from user code, so a wrapped
+        // Margin and padding are unconstrained ints from user code. A wrapped
         // negative would make the inner area larger than the outer one.
         let side margin padding = Saturating.add3 margin bt padding
 
@@ -78,11 +78,11 @@ module Layout =
           Bottom = side p.Margin.Bottom p.Padding.Bottom
           Left = side p.Margin.Left p.Padding.Left }
 
-    /// How much room a child gets across its parent's axis, worked out without
-    /// its intrinsic size. Only Len, Pct and Ratio can be settled that way; the
-    /// rest need the intrinsic, so they keep the whole available extent. Measuring
-    /// a child against this instead of the parent's full cross extent is what stops
-    /// it being measured at one width and then placed at another.
+    /// How much room a child gets across the axis of its parent, calculated without
+    /// its intrinsic size. Only Len, Pct and Ratio can be settled this way.
+    /// The others need the intrinsic size, so they keep the whole available extent.
+    /// Measure a child against this value, not the full cross extent of the parent.
+    /// Then the child is not measured at one width and placed at another.
     let private crossExtent (c: Constraint) (available: int) =
         match c with
         | Len _
@@ -126,10 +126,10 @@ module Layout =
                 | Row -> mainTotal, crossMax
                 | Column -> crossMax, mainTotal
 
-        // Saturated for the same reason as chrome: the chrome itself can reach
-        // Int32.MaxValue, so adding content to it wraps and hands the solver a
-        // negative intrinsic size. Unlike an edge sum, a measured size is never
-        // negative, so this also floors the result at zero.
+        // Saturated for the same reason as chrome. The chrome can reach
+        // Int32.MaxValue, so adding content to it wraps and gives the solver a
+        // negative intrinsic size. A measured size is never negative,
+        // unlike an edge sum, so this also floors the result at zero.
         let outer inner edge = max 0 (Saturating.add inner edge)
 
         outer contentW c.Horizontal, outer contentH c.Vertical
@@ -175,7 +175,7 @@ module Layout =
 
             // Between spreads the slack across the count-1 gaps. One uniform
             // slack/(count-1) truncates and leaves the last child short of the far
-            // edge, so the gaps are shared out the same way child sizes are.
+            // edge. So the gaps are shared out in the same way as child sizes.
             let gaps =
                 match justify with
                 | Justify.Between when count > 1 -> Solver.distribute slack (List.replicate (count - 1) 1)

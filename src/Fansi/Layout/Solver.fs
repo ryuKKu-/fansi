@@ -3,21 +3,21 @@ namespace Fansi.Core
 module Solver =
 
     /// Split `total` into parts proportional to `weights`, summing to exactly `total`.
-    /// Integer division leaves a surplus; it goes to the entries with the largest
-    /// fractional part, with ties won by the lower index. Without this the parts sum
-    /// to less than the total and the missing cells show up as gaps on screen.
+    /// Integer division leaves a surplus. The surplus goes to the entries with the largest
+    /// fractional part. The lower index wins a tie. Without this, the parts sum
+    /// to less than the total and the missing cells show as gaps on screen.
     let distribute (total: int) (weights: int list) : int list =
         // A weight can be as large as Int32.MaxValue (Ui.fill takes an unconstrained
-        // int), and F#'s List.sumBy uses checked addition even for int, so two such
+        // int). F#'s List.sumBy uses checked addition even for int. Two such
         // weights would throw OverflowException here before any other guard runs.
         let totalWeight = weights |> List.sumBy (fun w -> int64 (max 0 w))
 
         if total <= 0 || totalWeight <= 0L then
             weights |> List.map (fun _ -> 0)
         else
-            // total * weight can overflow int32 well before either operand is
-            // individually large (e.g. a fill weight of 2 at a 2-billion-cell
-            // total), so the share multiplication runs in int64.
+            // total * weight can overflow int32 before either operand is
+            // large by itself (for example, a fill weight of 2 at a 2-billion-cell
+            // total). So the share multiplication runs in int64.
             let total64 = int64 total
 
             let shares =
@@ -25,9 +25,9 @@ module Solver =
 
             let surplus = total - List.sum shares
 
-            // The remainder is only ever compared and sorted, never returned, so it
-            // stays int64: totalWeight can now exceed Int32.MaxValue itself (several
-            // large weights), and converting the remainder down to `int` would wrap.
+            // The remainder is only compared and sorted, never returned, so it
+            // stays int64. totalWeight can exceed Int32.MaxValue (several
+            // large weights), and a conversion of the remainder to `int` would wrap.
             let winners =
                 weights
                 |> List.mapi (fun i w -> i, w, total64 * int64 (max 0 w) % totalWeight)
@@ -56,8 +56,8 @@ module Solver =
 
         match c with
         | Len n -> max 0 n
-        // available * p can overflow int32 (e.g. Pct 100 at Int32.MaxValue), so
-        // the multiplication runs in int64 and the result is clamped back down.
+        // available * p can overflow int32 (for example, Pct 100 at Int32.MaxValue).
+        // So the multiplication runs in int64 and the result is clamped to int.
         | Pct p -> int (min (int64 available) (int64 available * int64 (max 0 p) / 100L))
         | Ratio(a, b) ->
             if b <= 0 then
@@ -69,11 +69,11 @@ module Solver =
         | Min n -> max 0 n
         | Fill _ -> 0
 
-    /// Size each child along one axis. `intrinsics` holds each child's measured
-    /// content size, in the same order as `constraints`. The two lists must have
-    /// the same length; a mismatch raises `ArgumentException` naming both counts,
-    /// since that means the caller built its lists wrong, not that the geometry
-    /// is merely awkward.
+    /// Size each child along one axis. `intrinsics` holds the measured
+    /// content size of each child, in the same order as `constraints`. The two lists must have
+    /// the same length. A mismatch raises `ArgumentException` that names both counts.
+    /// A mismatch means the caller built its lists wrongly. It does not mean
+    /// that the geometry is difficult.
     ///
     /// Sizes are never negative and never sum past `available`. When any child can
     /// grow, they sum to `available` exactly, so the children tile their parent with
@@ -82,12 +82,12 @@ module Solver =
         if List.length constraints <> List.length intrinsics then
             invalidArg
                 "intrinsics"
-                $"solve expects one intrinsic per constraint, got %d{List.length constraints} constraints and %d{List.length intrinsics} intrinsics"
+                $"solve needs one intrinsic for each constraint. It received %d{List.length constraints} constraints and %d{List.length intrinsics} intrinsics"
 
         let available = max 0 available
         let bases = List.map2 (baseSize available) constraints intrinsics
-        // Len is not clamped to `available`, so a handful of large children can
-        // overflow an int32 sum; add them up as int64 instead.
+        // Len is not clamped to `available`, so a few large children can
+        // overflow an int32 sum. Add them as int64 instead.
         let wanted = bases |> List.sumBy int64
 
         if wanted <= int64 available then
@@ -97,9 +97,9 @@ module Solver =
             else
                 bases
         else
-            // Shrink from the last child backwards. Nothing has a floor here: a child
-            // that cannot fit is better collapsed than left overflowing its parent.
-            // The excess is threaded as int64 for the same overflow reason as `wanted`.
+            // Shrink from the last child to the first. Nothing has a floor here.
+            // A child that cannot fit is collapsed, not left to overflow its parent.
+            // The excess is passed as int64 for the same overflow reason as `wanted`.
             let shrunk, _ =
                 bases
                 |> List.rev

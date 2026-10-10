@@ -13,8 +13,8 @@ module InputParser =
         /// The buffer ends mid-sequence. Wait for more bytes.
         | Incomplete
 
-    /// How many bytes this UTF-8 lead byte starts a character with, or 0 if it is
-    /// not a lead byte.
+    /// The byte length of the character that this UTF-8 lead byte starts. 0 if
+    /// it is not a lead byte.
     let private charLength (b: byte) =
         if b < 0x80uy then 1
         elif b >= 0xf0uy then 4
@@ -37,8 +37,8 @@ module InputParser =
         | 0x0auy -> Emitted([ key Key.Enter ], 1)
         | 0x09uy -> Emitted([ key Key.Tab ], 1)
         | 0x7fuy -> Emitted([ key Key.Backspace ], 1)
-        // Terminals disagree about which byte Ctrl+Backspace sends, so keep both
-        // reachable rather than folding them together.
+        // Terminals disagree about which byte Ctrl+Backspace sends. Keep both
+        // bytes separate.
         | 0x08uy -> Emitted([ ctrlKey Key.Backspace ], 1)
         | b when b >= 0x01uy && b <= 0x1auy -> Emitted([ ctrlKey (Key.Char(char (b + 96uy))) ], 1)
         | _ -> Skipped 1
@@ -47,15 +47,15 @@ module InputParser =
         let width = charLength buffer[0]
 
         if width = 0 then
-            // A continuation byte with no lead. Drop it rather than stalling.
+            // A continuation byte with no lead byte. Drop it. Do not stall.
             Skipped 1
         elif width > buffer.Length then
             Incomplete
         else
             let decoded = Encoding.UTF8.GetString(buffer.Slice(0, width))
             // An astral character decodes to a UTF-16 surrogate pair. Emit one
-            // Key.Char per code unit rather than dropping the second half; a
-            // consumer reassembles the pair by appending.
+            // Key.Char per code unit. Do not drop the second half. A consumer
+            // joins the pair again by appending.
             let events = decoded |> Seq.map (Key.Char >> key) |> List.ofSeq
             Emitted(events, width)
 
@@ -99,8 +99,9 @@ module InputParser =
         | 'F' -> Some Key.End
         | _ -> None
 
-    /// Internal so the reader can tell a stalled paste from a malformed tail, and
-    /// so it can find the end of a paste it has already started handing over.
+    /// Internal so the reader can tell a stalled paste from a malformed tail.
+    /// The reader also uses it to find the end of a paste that it started to
+    /// pass on.
     [<Literal>]
     let internal PasteStart = "\x1b[200~"
 
@@ -111,7 +112,8 @@ module InputParser =
     let private PasteEndBytes = Encoding.ASCII.GetBytes PasteEnd
 
     /// SGR mouse: ESC [ < button ; x ; y then M for press or m for release.
-    /// Coordinates arrive one-based and are reported zero-based, to match Rect.
+    /// Coordinates arrive one-based. The parser reports them zero-based, to
+    /// match Rect.
     let private mouse (buffer: ReadOnlySpan<byte>) =
         let mutable i = 3
         let mutable finalAt = -1
@@ -168,14 +170,13 @@ module InputParser =
                 )
             | _ -> Skipped consumed
 
-    /// Everything between the paste markers is text, including bytes that would
-    /// otherwise look like escape sequences. Without the terminator in hand the
-    /// whole paste waits, so a paste bigger than one read still arrives whole.
-    /// Finds the terminator in the raw bytes rather than decoding the whole
-    /// buffer up front: a paste split across many reads would otherwise get
-    /// re-decoded in full on every call, and a body that is not valid UTF-8
-    /// would throw the byte count off once it round-trips through GetString and
-    /// GetByteCount.
+    /// Everything between the paste markers is text. This includes bytes that
+    /// look like escape sequences. Without the terminator, the whole paste
+    /// waits. A paste bigger than one read therefore still arrives whole. Find
+    /// the terminator in the raw bytes. Do not decode the whole buffer first.
+    /// Otherwise a paste split across many reads is decoded in full on every
+    /// call. Also, a body that is not valid UTF-8 gives a wrong byte count
+    /// after a round trip through GetString and GetByteCount.
     let private paste (buffer: ReadOnlySpan<byte>) =
         let bodyStart = PasteStartBytes.Length
         let endAt = buffer.Slice(bodyStart).IndexOf(ReadOnlySpan PasteEndBytes)
@@ -187,9 +188,9 @@ module InputParser =
             let consumed = bodyStart + endAt + PasteEndBytes.Length
             Emitted([ InputEvent.Paste body ], consumed)
 
-    /// A CSI sequence is ESC [ then digits and semicolons, then one final byte in
-    /// the range 0x40 to 0x7e. Waiting for that final byte is what tells a sequence
-    /// that has not finished arriving apart from one that has.
+    /// A CSI sequence is ESC [ then digits and semicolons, then one final byte
+    /// in the range 0x40 to 0x7e. The parser waits for that final byte. This is
+    /// how it tells an unfinished sequence from a finished one.
     let private csi (buffer: ReadOnlySpan<byte>) =
         if buffer.Length >= 3 && char buffer[2] = '<' then
             mouse buffer
@@ -214,9 +215,9 @@ module InputParser =
                 if b >= 0x40uy && b <= 0x7euy then
                     finalAt <- i
                 elif b = 0x1buy then
-                    // No final byte of its own before the next sequence starts.
-                    // The sequence so far is malformed: stop here instead of
-                    // scanning through the ESC that begins the next one.
+                    // The next sequence starts before this one has a final
+                    // byte. The sequence is malformed. Stop here. Do not scan
+                    // through the ESC that begins the next one.
                     escAt <- i
                 else
                     i <- i + 1
@@ -239,8 +240,8 @@ module InputParser =
                 let consumed = finalAt + 1
 
                 if final = 'Z' then
-                    // Shift+Tab. The shift comes from the letter itself; there is
-                    // no modifier parameter to read it from.
+                    // Shift+Tab. The letter itself gives the shift. There is no
+                    // modifier parameter to read.
                     Emitted(
                         [ InputEvent.Key
                               { Key = Key.Tab
@@ -266,15 +267,15 @@ module InputParser =
             | 'R' -> Emitted([ key (Key.F 3) ], 3)
             | 'S' -> Emitted([ key (Key.F 4) ], 3)
             | c ->
-                // Application cursor mode sends arrows and Home/End through SS3
-                // too, not only the four function keys, so fall back to the same
-                // table CSI uses.
+                // Application cursor mode also sends arrows and Home/End
+                // through SS3, not only the four function keys. Use the same
+                // table as CSI for these.
                 match letterKey c with
                 | Some k -> Emitted([ key k ], 3)
                 | None -> Skipped 3
 
-    /// Applies Alt to every key in a step's result, and accounts for the ESC byte
-    /// that step didn't see.
+    /// Applies Alt to every key in a step's result. It also counts the ESC byte
+    /// that the step did not see.
     let private withAlt result =
         match result with
         | Emitted(es, n) ->
@@ -290,8 +291,9 @@ module InputParser =
 
     let private escape (buffer: ReadOnlySpan<byte>) =
         if buffer.Length = 1 then
-            // Could be the Escape key, could be the first byte of a sequence. Only
-            // time tells them apart, and that is parseFinal's job.
+            // It could be the Escape key. It could be the first byte of a
+            // sequence. Only time tells them apart. That is the job of
+            // parseFinal.
             Incomplete
         else
             match char buffer[1] with
@@ -301,19 +303,20 @@ module InputParser =
                 let b = buffer[1]
 
                 if b = 0x1buy && buffer.Length = 2 then
-                    // A second ESC with nothing after it yet. It might still turn
-                    // out to start a sequence once its "[" or "O" arrives, so wait
-                    // for it the same way a lone ESC does.
+                    // A second ESC with nothing after it yet. It might start a
+                    // sequence when its "[" or "O" arrives. Wait for it in the
+                    // same way as for a lone ESC.
                     Incomplete
                 elif b = 0x1buy && (char buffer[2] = '[' || char buffer[2] = 'O') then
-                    // The second ESC isn't a keypress of its own: it's the next
-                    // sequence arriving hot on Escape's heels. Emit a plain Escape
-                    // for the first byte and let the next step read what follows.
+                    // The second ESC is not a keypress. It is the start of the
+                    // next sequence, which arrives straight after Escape. Emit
+                    // a plain Escape for the first byte. The next step reads
+                    // what follows.
                     Emitted([ key Key.Esc ], 1)
                 elif b = 0x1buy then
-                    // Same control-or-text choice step makes, but not step itself:
-                    // that would recurse on a second ESC instead of treating it as
-                    // Alt+Esc.
+                    // Make the same control-or-text choice as step. Do not call
+                    // step itself. It would recurse on a second ESC and not
+                    // treat it as Alt+Esc.
                     withAlt (Emitted([ key Key.Esc ], 1))
                 elif b < 0x20uy || b = 0x7fuy then
                     withAlt (control b)
@@ -342,15 +345,15 @@ module InputParser =
 
         List.ofSeq events, pos
 
-    /// Read as many complete events as the buffer holds. Anything left over is a
-    /// sequence that has not finished arriving, so the caller keeps those bytes and
-    /// calls again once the terminal sends more.
+    /// Reads as many complete events as the buffer holds. Anything left is a
+    /// sequence that has not finished arriving. The caller keeps those bytes
+    /// and calls again when the terminal sends more.
     let parse (buffer: ReadOnlySpan<byte>) : InputEvent list * int = run buffer
 
-    /// Same as parse, but for a buffer the caller has decided will get no more
-    /// bytes. A trailing lone ESC is then the Escape key rather than the start of
-    /// something. A longer unfinished sequence is still left alone — waiting on it
-    /// is right, inventing a key from it is not.
+    /// Same as parse, but for a buffer that the caller knows will get no more
+    /// bytes. A trailing lone ESC is then the Escape key, not the start of a
+    /// sequence. The parser still leaves a longer unfinished sequence alone.
+    /// Waiting for it is correct. Making a key from it is not.
     let parseFinal (buffer: ReadOnlySpan<byte>) : InputEvent list * int =
         let events, consumed = run buffer
 
@@ -361,8 +364,9 @@ module InputParser =
             && buffer[consumed] = 0x1buy
             && buffer[consumed + 1] = 0x1buy
         then
-            // Nothing arrived to say what the second ESC was starting, so it
-            // never was: settle it as Escape with Alt, since two arrived.
+            // Nothing arrived to show what the second ESC started. So it
+            // started nothing. Treat it as Escape with Alt, because two ESC
+            // bytes arrived.
             let altEscape =
                 InputEvent.Key
                     { Key = Key.Esc
@@ -376,9 +380,9 @@ module InputParser =
             && buffer[consumed] = 0x1buy
             && (buffer[consumed + 1] = byte '[' || buffer[consumed + 1] = byte 'O')
         then
-            // Nothing followed, so no sequence was starting. The terminal sends
-            // Alt+key as ESC then the key, and these two keys happen to be the
-            // bytes that open a sequence.
+            // Nothing followed, so no sequence started. The terminal sends
+            // Alt+key as ESC then the key. These two keys are also the bytes
+            // that open a sequence.
             events @ [ InputEvent.Key(KeyEvent.alt (Key.Char(char buffer[consumed + 1]))) ], buffer.Length
         else
             events, consumed

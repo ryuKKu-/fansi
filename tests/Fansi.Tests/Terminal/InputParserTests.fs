@@ -51,8 +51,8 @@ let ``a character split across reads is left in the buffer`` () =
 
 [<Fact>]
 let ``a 4-byte character produces one event per utf-16 code unit`` () =
-    // an emoji is 4 bytes and decodes to a UTF-16 surrogate pair;
-    // a consumer reassembles the pair by appending the two characters
+    // an emoji is 4 bytes and decodes to a UTF-16 surrogate pair.
+    // A consumer joins the pair again by appending the two characters
     let events, consumed = parse "😀"
 
     Assert.Equal<InputEvent list>(
@@ -217,8 +217,8 @@ let ``escape then a control byte is alt on that key, not a character`` () =
 
 [<Fact>]
 let ``two escapes with nothing after them yet wait, then settle as alt-escape`` () =
-    // the second ESC could still turn out to start a sequence once its "[" or
-    // "O" arrives, so parse must wait on it exactly as it waits on a lone ESC
+    // the second ESC could still start a sequence when its "[" or "O" arrives.
+    // So parse must wait for it, as it waits for a lone ESC
     let waiting, consumed = parseBytes [ 0x1buy; 0x1buy ]
     Assert.Empty(waiting)
     Assert.Equal(0, consumed)
@@ -310,7 +310,7 @@ let ``a lone escape waits for parse and arrives for parseFinal`` () =
 
 [<Fact>]
 let ``parseFinal leaves a genuinely partial sequence alone`` () =
-    // ESC [ 1 ; with no final byte is not Escape, it is a truncated sequence
+    // ESC [ 1 ; with no final byte is not Escape. It is a truncated sequence
     let events, consumed = parseFinal "\x1b[1;"
     Assert.Empty(events)
     Assert.Equal(0, consumed)
@@ -379,7 +379,7 @@ let ``an unfinished paste waits for the rest`` () =
 
 [<Fact>]
 let ``a paste body that is not valid utf-8 still consumes exactly the whole paste`` () =
-    // a lone continuation byte has no valid decoding; the consumed count must
+    // a lone continuation byte has no valid decoding. The consumed count must
     // still come from the raw bytes, not from re-encoding the (lossy) decoded string
     let start = Encoding.ASCII.GetBytes "\x1b[200~" |> List.ofArray
     let stop = Encoding.ASCII.GetBytes "\x1b[201~" |> List.ofArray
@@ -421,8 +421,8 @@ let ``shift+tab decodes as tab with shift`` () =
 
 [<Fact>]
 let ``a malformed csi ending in another escape loses nothing after it`` () =
-    // ESC [ 1 never gets a final byte before the next ESC starts; the malformed
-    // prefix is skipped and the arrow key that follows still comes through
+    // ESC [ 1 never gets a final byte before the next ESC starts. The parser
+    // skips the malformed prefix and still returns the arrow key that follows
     let events, consumed = parse "\x1b[1\x1b[A"
 
     Assert.Equal<InputEvent list>([ InputEvent.Key(KeyEvent.plain Key.Up) ], events)

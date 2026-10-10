@@ -8,9 +8,9 @@ open Fansi.Core
 type FPS
 
 module AnsiSequence =
-    /// Erases what is visible and homes the cursor. It leaves out ESC[3J, which
-    /// wipes scrollback: some terminals apply it to the main screen's history even
-    /// from the alternate screen.
+    /// Erases what is visible and moves the cursor to the home position. It does not send ESC[3J.
+    /// ESC[3J wipes scrollback. Some terminals apply it to the history of the main screen,
+    /// even from the alternate screen.
     [<Literal>]
     let eraseVisibleScreen = "\x1b[2J\x1b[1;1H"
 
@@ -129,12 +129,12 @@ module Renderer =
         let mutable previousBuffer = Buffer.create 0 0
         let mutable dirty = false
         // Set when the size changes after something is on screen. The new frame is
-        // diffed against a blank buffer, so any cell it leaves blank would keep
-        // whatever the old frame had there.
+        // compared with a blank buffer. A cell that the frame leaves blank would keep
+        // the content of the old frame.
         let mutable eraseFirst = false
         let mutable painted = false
-        // A timer tick can still arrive after Stop. Past this point nothing may
-        // paint, because the caller is about to leave the alternate screen.
+        // A timer tick can arrive after Stop. After this point nothing may
+        // paint, because the caller leaves the alternate screen next.
         let mutable stopped = false
 
         new(fps: int<FPS>) = Renderer(fps, Console.Out)
@@ -153,7 +153,7 @@ module Renderer =
                     let mutable cursorY = -1
 
                     // In the same write as the redraw, so the screen never shows
-                    // blank between the two.
+                    // a blank between the two.
                     if eraseFirst then
                         eraseFirst <- false
                         sb.Append(AnsiSequence.eraseVisibleScreen) |> ignore
@@ -169,7 +169,7 @@ module Renderer =
 
                             if cur <> prev then
                                 // The terminal cannot draw the right half of a wide
-                                // character alone, so a change there reprints from the left.
+                                // character alone. A change there prints again from the left.
                                 let start = if cur.Continuation && x > 0 then x - 1 else x
 
                                 if cursorX <> start || cursorY <> y then
@@ -216,10 +216,10 @@ module Renderer =
                 ticker.Elapsed.Add(fun _ -> this.Flush())
                 ticker.Start()
 
-        /// Hand a frame to the renderer. The renderer takes ownership of the buffer:
-        /// do not mutate or reuse it afterwards, because it becomes the next frame's
-        /// diff baseline and later writes to it would make those cells look unchanged.
-        /// Give every frame a fresh buffer - Paint.render returns one.
+        /// Give a frame to the renderer. The renderer owns the buffer.
+        /// Do not change or reuse it afterwards. It becomes the baseline for the next
+        /// comparison, and later writes to it would make those cells look unchanged.
+        /// Give every frame a new buffer. Paint.render returns one.
         member this.SetFrame(buffer: Buffer) =
             lock this (fun () ->
                 if buffer.Width <> previousBuffer.Width || buffer.Height <> previousBuffer.Height then
@@ -229,7 +229,7 @@ module Renderer =
                 currentBuffer <- buffer
                 dirty <- true)
 
-        /// Paints what is still pending, then stops for good.
+        /// Paints what is still pending, then stops permanently.
         member this.Stop() =
             if ticker.Enabled then
                 ticker.Stop()

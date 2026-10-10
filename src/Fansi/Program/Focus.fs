@@ -1,7 +1,7 @@
 namespace Fansi
 
-/// Which of a fixed set of things currently has focus. One ring holds the answer,
-/// so two components cannot both believe they are focused.
+/// Tracks which item in a fixed set has focus. One ring holds this state, so
+/// two components cannot both have focus.
 type Focus<'id when 'id: equality> = private { Items: 'id list; Index: int }
 
 [<RequireQualifiedAccess>]
@@ -25,9 +25,8 @@ module Focus =
         { f with
             Index = (f.Index + count - 1) % count }
 
-    /// Moves focus to `id`. An id that is not in the ring leaves focus where it is:
-    /// the ring is the set of things that can be focused, so anything else is not a
-    /// destination.
+    /// Moves focus to `id`. If `id` is not in the ring, focus does not change.
+    /// The ring holds all items that can have focus.
     let focusOn (id: 'id) (f: Focus<'id>) =
         match List.tryFindIndex ((=) id) f.Items with
         | Some i -> { f with Index = i }

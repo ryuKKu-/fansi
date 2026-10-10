@@ -47,7 +47,7 @@ module HelpComponent =
     let private styled style text = Ui.text text |> Ui.style style
 
     /// Takes items from the front while they fit, with `gap` cells between two
-    /// items. Returns the cells used, the items taken and whether any were left.
+    /// items. Returns the cells used, the items taken, and whether any items remain.
     let private fitting room gap (widthOf: 'a -> int) (items: 'a list) =
         let rec go used taken rest =
             match rest with
@@ -62,7 +62,7 @@ module HelpComponent =
 
         go 0 [] items
 
-    // Whole entries only: half an entry would show a key without what it does.
+    // Whole entries only. Half an entry would show a key without its action.
     let private ellipsisAfter model used cut =
         let more = " " + model.Ellipsis
 

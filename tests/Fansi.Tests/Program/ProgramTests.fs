@@ -180,8 +180,8 @@ let ``an update that throws on another thread stops the program and hands over t
     let dispatch, stop = newPumpWith onCrash update (fun _ -> terminated <- true)
     stopPump.Value <- stop
 
-    // a plain thread: had the exception escaped dispatch, it would take the whole
-    // test run down with it
+    // a plain thread: if the exception escaped dispatch, it would stop the whole
+    // test run
     let worker = Thread(ThreadStart(fun () -> dispatch "boom"))
     worker.Start()
     worker.Join()

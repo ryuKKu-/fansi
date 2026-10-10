@@ -67,7 +67,7 @@ module TableComponent =
         else
             model.Cursor |> max 0 |> min (count - 1)
 
-    /// Clamps the cursor, then moves the offset only as far as it must to keep
+    /// Clamps the cursor, then moves the offset only as far as necessary to keep
     /// the cursor on screen.
     let private scrolled (model: Model<'row>) =
         let cursor = clampCursor model
@@ -89,7 +89,7 @@ module TableComponent =
             Offset = offset }
 
     let private moveBy (delta: int) (model: Model<'row>) =
-        // In int64 so a huge Height used as a page cannot wrap round.
+        // In int64 so that a very large Height used as a page cannot wrap.
         let target =
             int64 (clampCursor model) + int64 delta |> max 0L |> min (int64 Int32.MaxValue)
 
@@ -140,7 +140,7 @@ module TableComponent =
 
     let private borderChars (model: Model<'row>) = Layout.Border.chars model.Border
 
-    // Layout.Border.chars only knows boxes, so the table keeps its own tees for
+    // Layout.Border.chars knows only boxes, so the table keeps its own tees for
     // the line under the header.
     let private tees style =
         match style with
@@ -193,10 +193,10 @@ module TableComponent =
         else
             runs
 
-    /// One row's runs: each cell cut and padded to its column, with a space
-    /// between columns and the border's vertical bar at each end. The style
-    /// covers the cells and the gaps but not the bars. Missing cells are blank
-    /// and extra cells are dropped.
+    /// The runs of one row. Each cell is cut and padded to its column. A space
+    /// separates the columns, and the vertical bar of the border is at each end. The style
+    /// covers the cells and the gaps but not the bars. Missing cells are blank.
+    /// Extra cells are dropped.
     let private rowRuns (model: Model<'row>) (widths: int list) (style: Style) (cells: Node list) =
         let content =
             widths

@@ -2,8 +2,8 @@ namespace Fansi.Core
 
 /// Sums that cannot wrap. Margins, padding and sizes come from user code as
 /// unconstrained ints, so a total can leave the int range. F# truncates an
-/// out-of-range int64 to its low 32 bits, and a total that wraps negative makes
-/// Rect.deflate grow a rect instead of shrinking it, so these clamp instead.
+/// out-of-range int64 to its low 32 bits. A total that wraps negative makes
+/// Rect.deflate grow a rect instead of shrinking it. These sums clamp instead.
 module Saturating =
 
     let private clamp (total: int64) =
@@ -14,10 +14,10 @@ module Saturating =
 
     let add a b = clamp (int64 a + int64 b)
 
-    /// Clamps once on the combined total, not on each pairwise step, so it is not
-    /// the same as `add (add a b) c`: chaining `add` can clamp partway through and
-    /// lose the rest of the range, e.g. `add (add MaxValue MaxValue) MinValue` is
-    /// `-1`, while `add3 MaxValue MaxValue MinValue` is `MaxValue - 1`.
+    /// Clamps once on the combined total, not on each pairwise step. It is not
+    /// the same as `add (add a b) c`. Chaining `add` can clamp partway through and
+    /// lose the rest of the range. For example, `add (add MaxValue MaxValue) MinValue`
+    /// is `-1`, but `add3 MaxValue MaxValue MinValue` is `MaxValue - 1`.
     let add3 a b c = clamp (int64 a + int64 b + int64 c)
 
     let sub a b = clamp (int64 a - int64 b)
@@ -29,7 +29,7 @@ type Edges =
       Left: int }
 
     /// Left plus right. The individual edges come from user code and are unconstrained
-    /// ints; a wrapped total would make Rect.deflate grow a rect instead of shrinking it.
+    /// ints. A wrapped total would make Rect.deflate grow a rect instead of shrinking it.
     member this.Horizontal = Saturating.add this.Left this.Right
 
     /// Top plus bottom. Saturated for the same reason as Horizontal.

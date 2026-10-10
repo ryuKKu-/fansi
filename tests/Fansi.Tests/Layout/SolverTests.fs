@@ -10,7 +10,7 @@ let ``equal weights split evenly when the total divides`` () =
 
 [<Fact>]
 let ``a remainder goes to the earlier entry`` () =
-    // 3 split two ways is 1 each with 1 spare; the tie is won by the lower index
+    // 3 split two ways is 1 each with 1 spare. The lower index wins the tie.
     Assert.Equal<int list>([ 2; 1 ], Solver.distribute 3 [ 1; 1 ])
 
 [<Fact>]
@@ -59,24 +59,24 @@ let ``a large total splits across mixed weights without overflowing`` () =
 
 [<Fact>]
 let ``distribute does not overflow when weights are near the top of the int range`` () =
-    // Two weights of Int32.MaxValue push totalWeight itself past Int32.MaxValue;
-    // this used to throw OverflowException in the totalWeight sum.
+    // Two weights of Int32.MaxValue push totalWeight itself past Int32.MaxValue.
+    // This used to throw OverflowException in the totalWeight sum.
     Assert.Equal<int list>([ 50; 50 ], Solver.distribute 100 [ System.Int32.MaxValue; System.Int32.MaxValue ])
 
 [<Fact>]
 let ``distribute keeps the tie-break correct with huge weights and a tiny total`` () =
-    // Both raw shares floor to 0 here; the tie-break must still pick the earlier
-    // index without the remainder (2_147_483_647, right at the int32 boundary)
-    // getting corrupted by a premature conversion to `int`.
+    // Both raw shares floor to 0 here. The tie-break must still pick the earlier
+    // index. An early conversion to `int` must not corrupt the remainder
+    // (2_147_483_647, right at the int32 boundary).
     Assert.Equal<int list>([ 1; 0 ], Solver.distribute 1 [ System.Int32.MaxValue; System.Int32.MaxValue ])
 
 [<Fact>]
 let ``asymmetric weights do not invert the tie-break when the remainder wraps as an int`` () =
     // totalWeight here is 2_987_867_508, past Int32.MaxValue. The true int64
-    // remainders are [2_656_725_540; 331_141_968]; narrowed to `int`, the first
-    // one wraps to a negative number and sorts *below* the second, flipping the
-    // tie-break winner. Keeping the remainder `int64` end to end is what this
-    // pins: narrowed, this would come out as [232; 166] instead.
+    // remainders are [2_656_725_540; 331_141_968]. Narrowed to `int`, the first
+    // one wraps to a negative number and sorts *below* the second. This flips the
+    // tie-break winner. The test pins the remainder as `int64` end to end.
+    // Narrowed, the result would be [232; 166] instead.
     Assert.Equal<int list>([ 233; 165 ], Solver.distribute 398 [ 1748346702; 1239520806 ])
 
 [<Fact>]
@@ -216,10 +216,10 @@ let ``a mismatched intrinsics list raises naming both counts`` () =
     Assert.Contains("2 constraints", ex.Message)
     Assert.Contains("1 intrinsics", ex.Message)
 
-// Field values are signed (no abs) so negative constraints are reachable; only
-// the variant choice uses abs, as an index. `available` in the properties below
-// is left as the raw generated int, so it can land anywhere in the int32 range,
-// including near Int32.MaxValue where Pct/Ratio used to overflow.
+// Field values are signed (no abs), so negative constraints are reachable.
+// Only the variant choice uses abs, as an index. `available` in the properties
+// below is the raw generated int. It can land anywhere in the int32 range,
+// including near Int32.MaxValue, where Pct/Ratio used to overflow.
 let private constraintGen (n: int) =
     match abs n % 7 with
     | 0 -> Auto

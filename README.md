@@ -3,8 +3,8 @@
 Terminal user interfaces in F#, with the Elm architecture.
 
 You write a model, an `update` and a `view`. Fansi puts the terminal in raw
-mode, turns keys, mouse, paste and resize into messages, lays out the view with
-integer constraints and repaints only the cells that changed.
+mode. It turns keys, mouse, paste and resize into messages. It lays out the
+view with integer constraints. It repaints only the cells that changed.
 
 ## Install
 
@@ -49,8 +49,8 @@ let main _ =
     0
 ```
 
-Open `Elmish` before `Fansi`. Fansi adds to Elmish's `Cmd` and `Sub` modules,
-and the module opened last wins where both define the same name.
+Open `Elmish` before `Fansi`. Fansi adds to the `Cmd` and `Sub` modules of
+Elmish. Where both define the same name, the module you open last wins.
 
 ## Messages
 
@@ -65,14 +65,15 @@ and the module opened last wins where both define the same name.
 | `FocusChanged of bool` | the terminal window gained or lost focus |
 | `App of 'msg` | your own messages, from commands and subscriptions |
 
-Your commands come back as `App`, so a child component's command needs only
-`Cmd.map`. `Cmd.quit` stops the program and `Cmd.after 500<ms> msg` sends a
-message once, later. Ctrl+C quits unless you use `withoutQuitOnCtrlC`.
+Your commands come back as `App`, so a command from a child component needs
+only `Cmd.map`. `Cmd.quit` stops the program. `Cmd.after 500<ms> msg` sends a
+message one time, after the delay. Ctrl+C quits the program unless you use
+`withoutQuitOnCtrlC`.
 
 ## Views
 
-Constructors return a `Node` and every modifier is `Node -> Node`, so you can
-adjust a node a component already built:
+Constructors return a `Node`. Every modifier is `Node -> Node`, so you can
+change a node that a component already built:
 
 ```fsharp
 TimerComponent.view model.Timer |> Ui.border Single |> Ui.fill 1
@@ -81,7 +82,7 @@ TimerComponent.view model.Timer |> Ui.border Single |> Ui.fill 1
 - Constructors: `Ui.text`, `Ui.line`, `Ui.row`, `Ui.col`, `Ui.empty`.
 - Size along the parent's axis: `Ui.len`, `Ui.pct`, `Ui.ratio`, `Ui.fill`,
   `Ui.minLen`, `Ui.maxLen`, `Ui.auto`. The sizes always add up to the
-  parent's size exactly, with no cell lost to rounding.
+  size of the parent. No cell is lost to rounding.
 - Box: `Ui.border`, `Ui.title`, `Ui.titleWith`, `Ui.pad`, `Ui.padX`, `Ui.padY`, `Ui.margin`,
   `Ui.justify`, `Ui.align`.
 - Style: `Ui.fg`, `Ui.bg`, `Ui.bold`, `Ui.italic`, `Ui.underline`,
@@ -93,13 +94,13 @@ TimerComponent.view model.Timer |> Ui.border Single |> Ui.fill 1
 Ui.line [ Ui.text "Status: "; Ui.text "ok" |> Ui.bold |> Ui.fg Color.Green ]
 ```
 
-Inside a line only text and style count. A row or column in it gives its text,
-and its border and padding are ignored. Text is measured in terminal cells, so
-CJK characters and emoji take two.
+Inside a line, only text and style count. A row or column in a line gives its
+text. Fansi ignores its border and padding. Fansi measures text in terminal
+cells, so CJK characters and emoji use two cells.
 
 ## Focus
 
-A `Focus` ring holds which part of the screen has focus. Components do not
+A `Focus` ring records which part of the screen has focus. Components do not
 store it. You pass it in:
 
 ```fsharp
@@ -113,7 +114,7 @@ TextInputComponent.view (Focus.isFocused Name model.Focus) model.Name
 ## Subscriptions
 
 Components that tick, such as the timer, the spinner and the text cursor,
-carry their own id. Their subscriptions never collide, so `Sub.map` needs no
+have their own id. Their subscriptions never collide, so `Sub.map` needs no
 key:
 
 ```fsharp
@@ -145,15 +146,17 @@ For a timer of your own, `Sub.timer [ "clock" ] 1000<ms> Tick`.
 | `SpinnerComponent` | an animated spinner |
 | `ProgressBarComponent` | a bar filled in proportion |
 
-The table draws an outer border, with a line under the header, `Single` by default. Set `Border` (any `BorderStyle`, `NoBorder` for none) and `BorderColor` to change it.
+The table draws an outer border and a line under the header. The default
+style is `Single`. To change it, set `Border` (any `BorderStyle`, or `NoBorder`
+for none) and `BorderColor`.
 
-A component is a model, an `update`, a `view`, and a `subscribe` if it ticks.
-The parent owns the model and routes messages to it. `TextInputComponent`
-takes keys as `KeyInput`, pastes as `Pasted` and programmatic changes as
-`SetValue`.
+A component is a model, an `update` and a `view`. If it ticks, it also has a
+`subscribe`. The parent owns the model and sends messages to it.
+`TextInputComponent` takes keys as `KeyInput`, pastes as `Pasted`, and changes
+from code as `SetValue`.
 
 `ViewportComponent` shows `Height` rows of its content, wrapped to `Width`
-cells. The content is one node per paragraph, so every style works:
+cells. The content has one node for each paragraph, so every style works:
 
 ```fsharp
 let help, _ =
@@ -161,22 +164,23 @@ let help, _ =
 ```
 
 `setContent` and `setText` replace the content. `setText` makes one paragraph
-per line and drops one trailing newline, so `"a\nb\n"` gives two paragraphs. A
-viewport at the bottom stays at the bottom, so a log follows new lines.
-Content that fits the box counts as both the top and the bottom, so new content
-or a smaller size then shows the end. To show a document from its start, load
-it through `init`, and send `Top` after `setContent`, `setText` or `setSize`.
-Call `setSize` when the terminal is resized.
+for each line and drops one trailing newline, so `"a\nb\n"` gives two
+paragraphs. A viewport at the bottom stays at the bottom, so a log follows new
+lines. Content that fits the box is both at the top and at the bottom. New
+content or a smaller size then shows the end. To show a document from its
+start, load it through `init`. Send `Top` after `setContent`, `setText` or
+`setSize`. Call `setSize` when the terminal is resized.
 
-Set `Width` and `Height` to the inside of the box you put the viewport in. A
-narrower or shorter box wraps or cuts rows again. A paragraph's own size,
-border and padding are ignored, and its background colours only its text, not
-the whole row. Tabs and other control characters are dropped, so expand tabs
-before passing the text in.
+Set `Width` and `Height` to the inside size of the box that holds the
+viewport. A narrower or shorter box wraps or cuts the rows again. The viewport
+ignores the size, border and padding of a paragraph. The background of a
+paragraph colours only its text, not the whole row. The viewport drops tabs and
+other control characters, so expand tabs before you pass the text in.
 
 ## Samples
 
-- `samples/Layout`: one page per layout idea. Left and Right change page.
+- `samples/Layout`: one page for each layout idea. Left and Right change the
+  page.
 - `samples/Dashboard`: three panels, real components and a focus ring. Its
   README has the dashboard checklist.
 - `samples/Components`: every component on one screen, with a help box that
@@ -217,15 +221,16 @@ dotnet test tests/Fansi.Tests
 dotnet fantomas src tests samples
 ```
 
-The build has no warnings, and it should stay that way.
+The build has no warnings. Keep it that way.
 
 ## Contributing
 
 Commit messages are one line in the
 [conventional commits](https://www.conventionalcommits.org) style:
 `feat: ...`, `fix: ...`, `perf: ...`, `docs: ...`, `refactor: ...`,
-`test: ...`, `chore: ...`. Releases and the changelog are worked out from
-them: `feat`, `fix` and `perf` make a release, the others do not.
+`test: ...`, `chore: ...`. The release tool uses them to make the releases and
+the changelog. `feat`, `fix` and `perf` make a release. The other types do
+not.
 
 ## Licence
 

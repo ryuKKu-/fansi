@@ -35,14 +35,14 @@ module Buffer =
     let get (b: Buffer) x y =
         if inside b x y then b.Cells[index b x y] else Cell.Empty
 
-    /// Write one cell. Anything outside the clip rect or off the buffer is dropped,
-    /// which is what keeps a child from drawing over its parent.
+    /// Write one cell. Anything outside the clip rect or off the buffer is dropped.
+    /// This stops a child from drawing over its parent.
     let set (b: Buffer) (clip: Rect) x y cell =
         if inside b x y && Rect.contains x y clip then
             let i = index b x y
 
-            // Writing over either half of a wide character blanks the other half, so
-            // the terminal is never left with half a glyph.
+            // Writing over either half of a wide character blanks the other half.
+            // The terminal never keeps half a glyph.
             if b.Cells[i].Continuation && x > 0 then
                 b.Cells[i - 1] <- { b.Cells[i - 1] with Symbol = " " }
 
@@ -54,8 +54,8 @@ module Buffer =
 
             b.Cells[i] <- cell
 
-    /// Write text. A style whose background is Default keeps whatever background is
-    /// already in the cell, so a container's background shows through its children.
+    /// Write text. A style whose background is Default keeps the background that is
+    /// already in the cell. So the background of a container shows through its children.
     let writeText (b: Buffer) (clip: Rect) x y (style: Style) (text: string) =
         let fits px =
             inside b px y && Rect.contains px y clip
@@ -114,7 +114,7 @@ module Buffer =
     let fillRect (b: Buffer) (clip: Rect) (area: Rect) style =
         for y in area.Y .. area.Bottom - 1 do
             for x in area.X .. area.Right - 1 do
-                // A fill changes colour only, so it must not go through set, which
+                // A fill changes colour only. It must not use set, because set
                 // would split a wide character.
                 if inside b x y && Rect.contains x y clip then
                     let i = index b x y
@@ -173,7 +173,7 @@ module Paint =
             x
         |> ignore
 
-    /// The title goes into the top border with a space either side, so the box
+    /// The title goes into the top border with a space on each side. The box
     /// needs room for both corners, both spaces and at least one character.
     let private drawTitle (buf: Buffer) (clip: Rect) (rect: Rect) (style: Style) (title: Run list) =
         let runs =
@@ -206,15 +206,15 @@ module Paint =
         | Line _ ->
             let area = contentRect ln
 
-            // The parent's background is already painted underneath, so a run only
-            // carries a background it set itself.
+            // The background of the parent is already painted underneath. A run
+            // carries only a background that it set itself.
             Runs.wrap (Runs.ofNode { parent with BgColor = Color.Default } ln.Node) area.Width
             |> List.truncate (max 0 area.Height)
             |> List.iteri (fun i row -> writeRow buf ln.Clip area.X (area.Y + i) row)
         | Container _ -> ln.Children |> List.iter (paint buf s)
 
     /// Draw a laid-out tree. Each node paints its own background and border, then
-    /// its children, so later siblings end up on top.
+    /// its children. Later siblings are on top.
     let node (buf: Buffer) (ln: LayoutNode) = paint buf Style.Default ln
 
     /// Lay out and draw a tree into a fresh buffer of the given size.

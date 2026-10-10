@@ -1,5 +1,5 @@
-﻿// AutoOpen so `open Fansi` alone reaches Cmd; everything else here is internal and
-// stays out of a consumer's way regardless.
+﻿// AutoOpen, so `open Fansi` alone gives access to Cmd. Everything else here is
+// internal and does not affect a consumer.
 [<AutoOpen>]
 module Fansi.Elmish
 
@@ -49,9 +49,9 @@ type internal RingBuffer<'item>(size) =
             | true -> state <- ReadWritable(items |> doubleSize rix, items.Length, 0)
             | _ -> state <- ReadWritable(items, wix', rix)
 
-/// Carries a program's stop request to Cmd.quit, which the user writes at compile
-/// time and so cannot be handed the running program. AsyncLocal keeps it scoped to
-/// one program's run.
+/// Carries a program's stop request to Cmd.quit. The user writes Cmd.quit at
+/// compile time, so it cannot receive the running program. AsyncLocal limits it
+/// to one program's run.
 type internal QuitToken() =
     member val Requested = false with get, set
 
@@ -85,17 +85,20 @@ module internal Program' =
 
     module Subs = Sub.Internal
 
-    /// Returns a pair: start the program, and stop it from outside the pump for a
-    /// caller that has no message to send, such as the reader hitting end of input.
+    /// Returns a pair of functions. The first starts the program. The second
+    /// stops it from outside the pump, for a caller that has no message to
+    /// send, such as the reader at end of input.
     ///
-    /// `onCrash` gets whatever update, view or setState throws, whichever thread
-    /// dispatched the message. It runs under the pump lock and may call the returned
-    /// stop.
+    /// `onCrash` receives any exception that update, view or setState throws,
+    /// on whichever thread dispatched the message. It runs under the pump lock
+    /// and may call the returned stop.
     ///
-    /// Subscriptions are started and disposed under the pump lock too. A
-    /// subscription whose Dispose waits for its own dispatching thread deadlocks.
+    /// The program also starts and disposes subscriptions under the pump lock.
+    /// A subscription whose Dispose waits for its own dispatching thread
+    /// deadlocks.
     let runFirstRender (onCrash: exn -> unit) (arg: 'arg) (program: Program<'arg, 'model, 'msg, 'view>) =
-        // An ugly way to extract properties from the program because they're private
+        // This extracts the properties from the program in an indirect way,
+        // because they are private.
         let init = Program.init program
         let update = Program.update program
         let setState = Program.setState program
@@ -123,8 +126,9 @@ module internal Program' =
         let mutable state = model
         let mutable activeSubs = Subs.empty
         let mutable terminated = false
-        // Keystrokes, resize notifications and timers each dispatch from their own
-        // thread, so the queue and the pump have to be taken one thread at a time.
+        // Keystrokes, resize notifications and timers each dispatch from their
+        // own thread, so only one thread at a time can use the queue and the
+        // pump.
         let pump = obj ()
 
         let stop () =
@@ -141,18 +145,19 @@ module internal Program' =
                     if not reentered then
                         reentered <- true
 
-                        // Caught here, not left to the dispatching thread: a timer
-                        // thread swallows what reaches it, so the same bug would
-                        // crash from a keystroke and vanish from a timer.
+                        // Catch the exception here. Do not leave it to the
+                        // dispatching thread. A timer thread swallows
+                        // exceptions, so the same bug would crash from a
+                        // keystroke and vanish from a timer.
                         try
                             try
                                 processMsgs ()
                             with ex ->
                                 onCrash ex
                         finally
-                            // An update that throws would otherwise leave the flag
-                            // set and every later message would queue behind it for
-                            // ever.
+                            // Without this, an update that throws would leave
+                            // the flag set. Every later message would then
+                            // queue behind it for ever.
                             reentered <- false)
 
         and processMsgs () =
@@ -174,9 +179,9 @@ module internal Program' =
 
                     state <- model'
 
-                    // Cmd.quit sets its flag while the commands run, which is after
-                    // the check above. Without this second look a quit waits for the
-                    // next message to arrive before it lands.
+                    // Cmd.quit sets its flag while the commands run, which is
+                    // after the check above. Without this second check, a quit
+                    // waits for the next message before it takes effect.
                     if toTerminate msg then
                         stop ()
                     else
@@ -201,8 +206,8 @@ module internal Program' =
         run, (fun () -> lock pump stop)
 
 /// Subscriptions for Fansi apps. Every component subscription carries an id
-/// allocated when the component was created, so map needs no prefix to keep two
-/// instances apart.
+/// allocated when the component was created, so map needs no prefix to separate
+/// two instances.
 [<RequireQualifiedAccess>]
 module Sub =
     open System
@@ -220,10 +225,11 @@ module Sub =
     let timer (id: string list) (interval: int<ms>) (msg: 'msg) : Sub<'msg> =
         let start dispatch =
             let timer = new Timer(float (max 1 (int interval)))
-            // Elapsed runs on the thread pool, so a tick queued before Stop can still
-            // arrive after Dispose returns. The flag drops it. A lock would not do:
-            // the program disposes subscriptions while it holds its pump lock, and a
-            // tick waiting on that lock would never let Dispose finish.
+            // Elapsed runs on the thread pool, so a tick queued before Stop can
+            // still arrive after Dispose returns. The flag drops it. A lock
+            // does not work here. The program disposes subscriptions while it
+            // holds its pump lock. A tick that waits on that lock would stop
+            // Dispose from finishing.
             let stopped = ref false
 
             timer.Elapsed.Add(fun _ ->

@@ -4,11 +4,11 @@ open System.Text
 
 module Runs =
     /// Combine a node's own style with the one it inherits from its parent.
-    /// A foreground only carries down when the child leaves it Default. The four
-    /// attributes are OR-ed, so a child cannot switch off bold inside a bold parent;
-    /// that is a limitation we accept, since Style has no "off" value to say it with.
-    /// Background is absent on purpose: Buffer.writeText already keeps a parent's
-    /// background visible under its children.
+    /// A foreground passes down only when the child leaves it Default. The four
+    /// attributes are OR-ed, so a child cannot switch off bold inside a bold parent.
+    /// This limit is accepted, because Style has no "off" value.
+    /// Background is absent on purpose. Buffer.writeText already keeps the background
+    /// of a parent visible under its children.
     let cascade (parent: Style) (own: Style) =
         { own with
             FgColor =
@@ -22,10 +22,10 @@ module Runs =
             Strikethrough = own.Strikethrough || parent.Strikethrough }
 
     /// The styled runs of a node, in reading order. A container or line inside is
-    /// flattened: only its text and style count, never its props.
+    /// flattened. Only its text and style count, never its props.
     let rec ofNode (parent: Style) (node: Node) : Run list =
-        // Inside a line, a nested node's background carries down as well, because
-        // only its text is drawn. Its own box never is.
+        // Inside a line, the background of a nested node passes down as well, because
+        // only its text is drawn. Its own box is never drawn.
         let carry (own: Style) =
             { cascade parent own with
                 BgColor =
@@ -43,9 +43,9 @@ module Runs =
         row |> List.sumBy (fun r -> Width.ofString r.Text)
 
     /// Break runs into rows no wider than maxWidth cells. A newline starts a row.
-    /// Text is cut hard, with no word awareness, but never inside a character: one
-    /// that does not fit what is left of a row moves to the next, and one wider than
-    /// a whole row fits nowhere and is dropped.
+    /// Text is cut hard, with no word awareness, but never inside a character.
+    /// A character that does not fit the rest of a row moves to the next row.
+    /// A character wider than a whole row fits nowhere and is dropped.
     let wrap (runs: Run list) (maxWidth: int) : Run list list =
         if maxWidth <= 0 then
             []
@@ -91,7 +91,7 @@ module Runs =
             List.ofSeq rows
 
     /// The runs cut to at most maxWidth cells. It stops at the first character
-    /// that would cross the edge, so a wide character is dropped rather than halved.
+    /// that would cross the edge. A wide character is dropped, not halved.
     let truncate (maxWidth: int) (runs: Run list) : Run list =
         let kept = ResizeArray<Run>()
         let mutable used = 0

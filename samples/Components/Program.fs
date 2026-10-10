@@ -59,7 +59,7 @@ let init () =
     let fruits =
         ListComponent.init [ "apple"; "banana"; "cherry"; "damson"; "elderberry"; "fig" ] id 3
 
-    // Loaded through init, not setText: empty content counts as the bottom, and
+    // Loaded through init, not setText. Empty content counts as the bottom, and
     // setText would then follow the end of the text.
     let help, _ = ViewportComponent.init 36 3 (helpText |> List.map Ui.text)
 

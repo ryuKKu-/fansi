@@ -38,8 +38,8 @@ let ``a child cannot draw past its parent's border`` () =
 
 [<Fact>]
 let ``a child cannot draw past its parent's border horizontally`` () =
-    // a long single-line child inside a narrow bordered box: the border's right
-    // column must survive, not be overwritten by the child's text
+    // a long single-line child inside a narrow bordered box. The child's text
+    // must not overwrite the right column of the border
     let node = Ui.row [ Ui.text "abcdefghij" ] |> Ui.border Ascii |> Ui.fill 1
     let lines = render 6 3 node
     Assert.Equal("+----+", lines[0])
@@ -53,9 +53,9 @@ let ``padding pushes content inwards`` () =
 
 [<Fact>]
 let ``a later sibling draws over an earlier one`` () =
-    // Siblings can't overlap through Ui: the solver tiles exactly and offsets are
-    // prefix sums, so two children never share a rect. Drive Paint.node directly
-    // against a hand-built layout tree instead, so paint order is actually pinned.
+    // Siblings cannot overlap through Ui. The solver tiles exactly and offsets are
+    // prefix sums, so two children never share a rect. Call Paint.node directly
+    // with a hand-built layout tree instead, so the test pins the paint order.
     let rect = { X = 0; Y = 0; Width = 3; Height = 1 }
 
     let leaf text =

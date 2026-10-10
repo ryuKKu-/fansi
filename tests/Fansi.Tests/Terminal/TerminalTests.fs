@@ -114,7 +114,7 @@ let ``raw flags land in c_lflag and c_iflag and nowhere else`` (isMacOs: bool) =
     let layout = Terminal.Unix.layoutFor isMacOs
     let buffer = Array.create Terminal.Unix.BufferSize 0xAAuy
     let cooked = flags.Icanon ||| flags.Echo ||| flags.Isig ||| flags.Iexten
-    // a survivor in each field, different from each other, so swapping the two
+    // a surviving value in each field, different from each other, so swapped
     // offsets cannot leave both fields looking right
     let tostop = if isMacOs then 0x00400000u else 0x0100u
     let ignbrk = 0x0001u
@@ -153,8 +153,8 @@ let ``raw mode is only entered from the foreground process group`` () =
 
 [<Fact>]
 let ``entering raw mode without a console changes nothing and still disposes`` () =
-    // guarded: an in-process runner that left stdin on the tty would otherwise put
-    // the developer's own terminal into raw mode
+    // guarded: an in-process runner that left stdin on the tty would otherwise set
+    // the developer's own terminal to raw mode
     if Console.IsInputRedirected then
         use _scope = Terminal.enterRawMode ()
         Assert.False(Terminal.isRaw ())

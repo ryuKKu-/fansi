@@ -24,7 +24,7 @@ module ViewportComponent =
         {
             /// One node per paragraph: Ui.text or Ui.line.
             Content: Node list
-            /// Cells. Lines wrap to this; 0 or below means no wrapping.
+            /// Cells. Lines wrap to this width. 0 or below means no wrapping.
             Width: int
             /// Rows shown.
             Height: int
@@ -78,12 +78,12 @@ module ViewportComponent =
 
             rows
 
-    // Counted on every call rather than cached, so a model changed by hand
-    // ({ m with Width = 10 }) never holds rows that no longer match.
+    // Counted on every call and not cached. A model that is changed by hand
+    // ({ m with Width = 10 }) then never holds rows that no longer match.
     let private paragraphRows model =
         model.Content |> List.map (rowsIn (wrapWidth model))
 
-    // A view with no height shows nothing, so it has nowhere to scroll.
+    // A view with no height shows nothing, so it cannot scroll.
     let private lastOffset height count =
         if height <= 0 then 0 else max 0 (count - height)
 
@@ -147,7 +147,7 @@ module ViewportComponent =
             clamp model.Height count model.YOffset * 100 / last
 
     /// Replaces the content. A view at the bottom stays at the bottom, so a log
-    /// follows new lines; a view scrolled up keeps its place.
+    /// follows new lines. A view scrolled up keeps its place.
     let setContent content (model: Model) =
         let follow = atBottom model
         let next = { model with Content = content }
@@ -171,9 +171,9 @@ module ViewportComponent =
 
         setContent (text.Split '\n' |> Array.map Ui.text |> List.ofArray) model
 
-    /// Changes the size. Rewrapping moves every row, so the view keeps the
-    /// paragraph that held its top row, rather than a row number that now points
-    /// somewhere unrelated.
+    /// Changes the size. Wrapping again moves every row, so the view keeps the
+    /// paragraph that held its top row. It does not keep a row number,
+    /// because that number can point to an unrelated row.
     let setSize width height (model: Model) =
         let resized =
             { model with
@@ -193,7 +193,7 @@ module ViewportComponent =
             { resized with
                 YOffset = lastOffset height count }
         else
-            // Not at the bottom means there is content and the top row is inside it.
+            // If the view is not at the bottom, there is content and the top row is inside it.
             let index = oldStarts |> List.findIndexBack (fun start -> start <= top)
 
             { resized with

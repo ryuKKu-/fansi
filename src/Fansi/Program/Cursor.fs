@@ -5,8 +5,8 @@ open Fansi
 open Fansi.Core
 
 /// A text cursor for any component that edits text. Focus is not part of the
-/// model: the caller passes it in, so the focus ring stays the only place that
-/// knows who is focused.
+/// model. The caller passes it in, so the focus ring stays the only place that
+/// knows which component has focus.
 [<RequireQualifiedAccess>]
 module Cursor =
 

@@ -642,8 +642,8 @@ let ``ctrl+n and ctrl+p cycle through the matches`` () =
 
 [<Fact>]
 let ``a change to the value goes back to the first match`` () =
-    // "a" matches all three; Ctrl+N moves to "Adam Smith". "ad" still matches two
-    // ("Ada Lovelace", "Adam Smith"), so the reset to index 0 is what picks Ada, not luck.
+    // "a" matches all three. Ctrl+N moves to "Adam Smith". "ad" still matches two
+    // ("Ada Lovelace", "Adam Smith"). The reset to index 0 picks Ada, not luck.
     let m =
         fresh ()
         |> withPool [ "Ada Lovelace"; "Adam Smith"; "Alan Turing" ]

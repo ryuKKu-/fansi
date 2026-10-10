@@ -8,8 +8,8 @@ open System.Text
 type Glyph = { Chars: string; Cells: int }
 
 module Width =
-    /// Code points terminals draw two cells wide: East Asian Wide and Fullwidth,
-    /// and emoji drawn as pictures by default. Sorted, for the binary search below.
+    /// Code points that terminals draw two cells wide: East Asian Wide and Fullwidth,
+    /// and emoji drawn as pictures by default. Sorted for the binary search below.
     let internal wideRanges: (int * int) array =
         [| 0x1100, 0x115F
            0x231A, 0x231B
@@ -109,7 +109,7 @@ module Width =
         || (r.Value >= 0x2066 && r.Value <= 0x2069)
 
     /// Split text into glyphs. A control character would drive the terminal instead
-    /// of drawing, so it is dropped, and so is a mark with nothing to sit on.
+    /// of drawing, so it is dropped. A mark with nothing to sit on is also dropped.
     /// EnumerateRunes already turns a lone surrogate into U+FFFD.
     let glyphs (text: string) : Glyph list =
         if isNull text then
@@ -118,7 +118,7 @@ module Width =
             let result = ResizeArray<Glyph>()
 
             for r in text.EnumerateRunes() do
-                // Bidi controls reorder the text the user sees, e.g. to disguise a file name.
+                // Bidi controls reorder the text the user sees. For example, they can disguise a file name.
                 if Rune.GetUnicodeCategory r <> UnicodeCategory.Control && not (isBidiControl r) then
                     let cells = ofRune r
 

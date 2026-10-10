@@ -36,10 +36,10 @@ type private InternalProgram<'model, 'msg>
     // the new size.
     let mutable resized = false
 
-    // What Run waits on. A read of stdin cannot be cancelled, so anything waiting
-    // on the reader cannot be woken by a quit that came from somewhere else.
-    // Continuations run off this thread so the terminate path, which holds the
-    // pump lock, never ends up running the shutdown itself.
+    // What Run waits on. A read of stdin cannot be cancelled. A quit from
+    // another source therefore cannot wake anything that waits on the reader.
+    // Continuations run on another thread. The terminate path holds the pump
+    // lock, so it never runs the shutdown itself.
     let stopped =
         TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
 
@@ -64,19 +64,22 @@ type private InternalProgram<'model, 'msg>
 
     let shouldRender oldModel newModel = not <| equal oldModel newModel
 
-    // A tail that is not a paste is given up on after three escape timeouts, 150
-    // ms at the default: far longer than a terminal takes to send the rest of a
-    // sequence, far shorter than a person notices.
+    // The reader stops waiting for a tail that is not a paste after three
+    // escape timeouts, which is 150 ms by default. This is far longer than a
+    // terminal needs to send the rest of a sequence. It is far shorter than a
+    // person can notice.
     let shortTailTimeouts = 3
 
-    // A paste gets two seconds of silence before its text is handed over without
-    // its framing. Long enough that a slow link never chops one in half. Counted in
-    // time rather than in timeouts, so a longer escape timeout does not stretch it.
+    // A paste waits for two seconds of silence before the reader passes on its
+    // text without the framing. This is long enough that a slow link never
+    // splits a paste in half. It counts time, not timeouts, so a longer escape
+    // timeout does not extend it.
     let stalledPasteTimeouts = max 1 (2000 / escapeTimeout)
 
-    // How much of a paste the reader holds before handing over a chunk of it. Big
-    // enough that a pasted file, log or certificate still arrives as one Paste,
-    // small enough to bound the copying the growable buffer costs on every read.
+    // How much of a paste the reader holds before it passes on a chunk. The
+    // limit is big enough that a pasted file, log or certificate still arrives
+    // as one Paste. It is small enough to limit the copying that the growable
+    // buffer costs on every read.
     let maxPending = 1024 * 1024
 
     let pasteStartBytes = Encoding.ASCII.GetBytes InputParser.PasteStart
@@ -96,9 +99,9 @@ type private InternalProgram<'model, 'msg>
     let dispatchEvent event =
         dispatch (toMsg event)
 
-        // Raw mode clears the signal the terminal would normally raise, so Ctrl+C
-        // is just a byte now. The app still sees the key; unless it asked to keep
-        // the key for itself, the key also leaves.
+        // Raw mode removes the signal that the terminal normally raises, so
+        // Ctrl+C is only a byte. The app still sees the key. Unless the app
+        // asked to keep the key, the key also ends the program.
         match event with
         | InputEvent.Key k when quitOnCtrlC && isCtrlC k -> stopProgram ()
         | _ -> ()
@@ -117,10 +120,11 @@ type private InternalProgram<'model, 'msg>
     let pasteEndAt (buffer: byte array) =
         ReadOnlySpan(buffer).IndexOf(ReadOnlySpan pasteEndBytes)
 
-    /// What a buffer the reader is giving up on still owes the app. A paste hands
-    /// over what it has, because losing the framing beats losing what was typed. A
-    /// malformed sequence owes nothing: keeping it would glue every later keystroke
-    /// onto the bad prefix and misread all of them.
+    /// What the reader still sends to the app from a buffer that it abandons. A
+    /// paste passes on what it has, because losing the framing is better than
+    /// losing what the user typed. A malformed sequence gives nothing. If kept,
+    /// it would attach every later keystroke to the bad prefix, and the parser
+    /// would misread all of them.
     let stuckPasteText insidePaste (tail: byte array) =
         let bodyAt = if insidePaste then 0 else pasteBodyAt tail
 
@@ -129,15 +133,15 @@ type private InternalProgram<'model, 'msg>
         else
             None
 
-    /// On Unix, Console.OpenStandardInput on a terminal goes through .NET's own line
-    /// editor: it echoes, waits for Enter and rewrites termios around every read.
-    /// Reading fd 0 directly gets the bytes as they are typed. Windows in raw mode
-    /// with virtual-terminal input already does.
+    /// On Unix, Console.OpenStandardInput on a terminal uses the line editor of
+    /// .NET. It echoes, waits for Enter and rewrites termios around every read.
+    /// Reading fd 0 directly returns the bytes as the user types them. Windows
+    /// in raw mode with virtual-terminal input already does this.
     let openInput () : Stream =
         if RuntimeInformation.IsOSPlatform OSPlatform.Windows then
             Console.OpenStandardInput()
         else
-            // bufferSize 0: no buffering of our own on top of the reads
+            // bufferSize 0 means no extra buffering on top of the reads.
             new FileStream(new SafeFileHandle(0n, false), FileAccess.Read, 0)
 
     let recordFailure ex =
@@ -149,17 +153,19 @@ type private InternalProgram<'model, 'msg>
         task {
             let stdin = openInput ()
             let chunk = Array.zeroCreate<byte> (64 * 1024)
-            // Whatever the parser could not finish. Carrying it forward is what
-            // makes a sequence or a paste split across reads arrive whole.
+            // Whatever the parser could not finish. Keeping it for the next
+            // read makes a sequence or a paste that is split across reads
+            // arrive whole.
             let mutable pending = Array.empty<byte>
             // A read that lost the escape-timeout race is still running against
-            // chunk. Keep waiting on that same task next time round rather than
-            // starting a second concurrent read on the same stream and buffer.
+            // chunk. On the next loop, keep waiting on that same task. Do not
+            // start a second concurrent read on the same stream and buffer.
             let mutable outstandingRead: Task<int> option = None
             let mutable stuckTimeouts = 0
-            // Set once part of a paste has gone to the app. Its start marker went
-            // with those bytes, so from here the reader watches for the terminator
-            // itself rather than letting the parser read the rest as keystrokes.
+            // Set when part of a paste has gone to the app. Its start marker
+            // went with those bytes. From here, the reader watches for the
+            // terminator itself. The parser does not read the rest as
+            // keystrokes.
             let mutable inPaste = false
 
             while not quit do
@@ -169,8 +175,9 @@ type private InternalProgram<'model, 'msg>
                     | None -> stdin.ReadAsync(chunk, 0, chunk.Length)
 
                 let! finished =
-                    // Mid-paste the buffer can be empty and still be waiting on
-                    // something, so the timeout has to run there too.
+                    // In the middle of a paste, the buffer can be empty and
+                    // still wait for something. The timeout must therefore run
+                    // there too.
                     if pending.Length = 0 && not inPaste then
                         task {
                             let! n = read
@@ -182,8 +189,9 @@ type private InternalProgram<'model, 'msg>
                             let! winner = Task.WhenAny(read, Task.Delay(escapeTimeout, timeout.Token))
 
                             if obj.ReferenceEquals(winner, read) then
-                                // The delay lost. Cancelling drops its timer entry,
-                                // which a long paste would otherwise leak per read.
+                                // The delay lost. Cancelling removes its timer
+                                // entry. Without this, a long paste would leak
+                                // one entry per read.
                                 timeout.Cancel()
                                 let! n = read
                                 return Some n
@@ -211,9 +219,9 @@ type private InternalProgram<'model, 'msg>
                     else
                         stuckTimeouts <- stuckTimeouts + 1
 
-                        // A paste still coming in gets real time before its text is
-                        // handed over without its framing. A sequence that will
-                        // never finish goes quickly.
+                        // A paste that is still arriving gets real time before
+                        // the reader passes on its text without the framing. A
+                        // sequence that will never finish is abandoned quickly.
                         let limit =
                             if inPaste || pasteBodyAt pending >= 0 then
                                 stalledPasteTimeouts
@@ -226,8 +234,8 @@ type private InternalProgram<'model, 'msg>
                             pending <- Array.empty
                             stuckTimeouts <- 0
                 | Some 0 ->
-                    // End of a pipe. Nothing more is coming, so the tail gets its
-                    // last chance instead of going down with the stream.
+                    // End of a pipe. Nothing more arrives, so the tail gets its
+                    // last chance. It does not disappear with the stream.
                     if pending.Length > 0 then
                         if not inPaste then
                             let events, consumed = InputParser.parseFinal (ReadOnlySpan pending)
@@ -261,8 +269,8 @@ type private InternalProgram<'model, 'msg>
                         pending <- buffer[consumed..]
 
                     if pending.Length >= maxPending then
-                        // The terminator can straddle this boundary, so keep back
-                        // enough bytes to still recognise it on the next read.
+                        // The terminator can span this boundary. Hold enough
+                        // bytes to recognise it on the next read.
                         let keep = pasteEndBytes.Length - 1
 
                         match stuckPasteText inPaste pending[.. pending.Length - keep - 1] with
@@ -290,19 +298,20 @@ type private InternalProgram<'model, 'msg>
                 stopped.TrySetResult() |> ignore
 
         let thread = Thread(ThreadStart body)
-        // Nothing can cancel a read of stdin, so the reader may still be parked in
-        // one when the program quits. A background thread does not hold the process
-        // open, which is what makes quitting from anywhere else work.
+        // Nothing can cancel a read of stdin, so the reader may still wait in
+        // one when the program quits. A background thread does not keep the
+        // process open. This makes quitting from any other source work.
         //
-        // The trap for a caller: that parked read is still holding stdin after run
-        // returns, so the first thing typed afterwards can go to it instead of to
-        // the caller. A program that reads stdin again after run should exit
+        // Warning for a caller: that waiting read still holds stdin after run
+        // returns. The first input typed afterwards can go to it and not to the
+        // caller. A program that reads stdin again after run should exit
         // instead.
         thread.IsBackground <- true
         thread.Start()
 
-    /// SIGWINCH where it exists, polling where it does not. Either way the size is
-    /// compared before dispatching, so a repaint only happens on a real change.
+    /// Uses SIGWINCH where it exists and polling where it does not. In both
+    /// cases the code compares the size before it dispatches. A repaint
+    /// therefore happens only on a real change.
     let watchResize () =
         let mutable lastW = 0
         let mutable lastH = 0
@@ -391,8 +400,8 @@ type private InternalProgram<'model, 'msg>
                         renderView viewTree
                     | _ -> ()
 
-            // Wherever update throws, the program stops and Run rethrows the
-            // exception below, on the caller's thread.
+            // If update throws on any thread, the program stops. Run rethrows
+            // the exception below, on the caller's thread.
             let onCrash ex =
                 recordFailure ex
                 stopProgram ()
@@ -404,10 +413,11 @@ type private InternalProgram<'model, 'msg>
 
                 runProgramLoop ()
 
-                // Paints the first frame. runFirstRender calls setState while it is
-                // still the non-rendering version assigned at init, and the rendering
-                // version installed above only runs when a message arrives — so an app
-                // whose init dispatches nothing would never paint without this.
+                // Paints the first frame. runFirstRender calls setState while
+                // it is still the non-rendering version that init assigned. The
+                // rendering version that the code installs above runs only when
+                // a message arrives. Without this, an app whose init dispatches
+                // nothing would never paint.
                 renderView viewTree
 
                 use _resize = watchResize ()
@@ -440,8 +450,8 @@ module FansiProgram =
         (update: FansiMsg<'msg> -> 'model -> 'model * Cmd<'msg>)
         (view: 'model -> Node)
         =
-        // The app returns plain Cmd<'msg>; the framework lifts it back into
-        // FansiMsg so a child component's commands need only Cmd.map.
+        // The app returns plain Cmd<'msg>. The framework lifts it into
+        // FansiMsg, so the commands of a child component need only Cmd.map.
         let lift (model, cmd) = model, Cmd.map App cmd
 
         { program =
@@ -456,15 +466,15 @@ module FansiProgram =
 
     let withMouseEnabled (p: FansiProgram<'model, 'msg>) = { p with mouseEnabled = true }
 
-    /// Keeps Ctrl+C for the app. It still arrives as a key event either way; this
-    /// only stops the program quitting on it, so an app that takes the key also
-    /// takes the job of leaving.
+    /// Keeps Ctrl+C for the app. It arrives as a key event in both cases. This
+    /// option only stops the program from quitting on it. An app that takes the
+    /// key also takes the job of exiting.
     let withoutQuitOnCtrlC (p: FansiProgram<'model, 'msg>) = { p with quitOnCtrlC = false }
 
-    /// How long a lone Esc waits for the rest of a sequence before it counts as the
-    /// Esc key. The default, 50 ms, suits a local terminal. Over a slow link such as
-    /// SSH, arrow keys can arrive split and read as Esc plus letters; a longer
-    /// timeout fixes that at the cost of a slower Esc.
+    /// How long a lone Esc waits for the rest of a sequence before it counts as
+    /// the Esc key. The default, 50 ms, suits a local terminal. Over a slow
+    /// link such as SSH, arrow keys can arrive split and read as Esc plus
+    /// letters. A longer timeout fixes that, but it makes Esc slower.
     let withEscapeTimeout (timeout: int<ms>) (p: FansiProgram<'model, 'msg>) =
         { p with
             escapeTimeout = max 1<ms> timeout }
@@ -489,9 +499,9 @@ module FansiProgram =
                   AnsiSequence.showCursor
                   AnsiSequence.disableAltScreenBuffer ]
 
-        // Runs once on every way out, including a plain kill, and before the
-        // terminal modes go back. Mouse tracking left on would type a report into
-        // the shell on every mouse move.
+        // Runs once on every exit, including a plain kill, and before the
+        // program restores the terminal modes. If mouse tracking stays on, the
+        // terminal types a report into the shell on every mouse move.
         let leave () =
             renderer.Stop()
             renderer.Execute teardown

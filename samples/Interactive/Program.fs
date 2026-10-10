@@ -52,11 +52,11 @@ let update msg model =
             { model with
                 Typed = model.Typed.Substring(0, model.Typed.Length - 1) },
             Cmd.none
-        // Deliberately throws, so a person can check the program dies loudly
-        // instead of freezing on its last frame.
+        // Throws on purpose, so a person can check that the program fails loudly
+        // and does not freeze on its last frame.
         | Key.Char 'e' when k.Ctrl -> failwith "update threw on purpose (ctrl+e)"
-        // Arms a quit with no more keys pressed, to prove a delayed command can
-        // still stop the program - and that its message makes it back to update
+        // Arms a quit with no more keys pressed. This proves that a delayed command can
+        // still stop the program. It also proves that its message reaches update
         // through the App lift, not just Cmd.quit called straight from a key.
         | Key.Char 't' when k.Ctrl ->
             model |> note "quitting from a timer in 2s - hands off the keyboard", Cmd.after 2000<ms> QuitTimerFired
