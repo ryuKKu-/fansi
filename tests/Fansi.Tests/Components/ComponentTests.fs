@@ -26,12 +26,12 @@ let ``a focused button has a rounded border`` () =
 
 [<Fact>]
 let ``the list marks the focused item`` () =
-    let model, _ = ListComponent.init [ "one"; "two" ] id 2
-    Assert.Equal<string list>([ "\u25b8 one"; "  two" ], render 5 2 (ListComponent.view model))
+    let model = ListComponent.init [ "one"; "two" ] id 2
+    Assert.Equal<string list>([ "> one"; "  two" ], render 5 2 (ListComponent.view model))
 
 [<Fact>]
 let ``a wide focus marker keeps the items lined up`` () =
-    let model, _ = ListComponent.init [ "a"; "b" ] id 2
+    let model = ListComponent.init [ "a"; "b" ] id 2
     let model = { model with FocusedIndicator = "✅" }
     let buf = Paint.render 4 2 (ListComponent.view model)
     Assert.Equal("a", (Buffer.get buf 2 0).Symbol)
@@ -39,7 +39,7 @@ let ``a wide focus marker keeps the items lined up`` () =
 
 [<Fact>]
 let ``the list moves and selects on real keys`` () =
-    let model, _ = ListComponent.init [ "one"; "two"; "three" ] id 2
+    let model = ListComponent.init [ "one"; "two"; "three" ] id 2
 
     let press key m =
         fst (ListComponent.update (ListComponent.KeyInput(KeyEvent.plain key)) m)
@@ -49,6 +49,14 @@ let ``the list moves and selects on real keys`` () =
     Assert.Equal(1, moved.ViewportOffset)
     Assert.Equal(Some "three", ListComponent.selectedItem (press Key.Enter moved))
     Assert.Equal(1, (press Key.Up moved).FocusItemIndex)
+
+[<Fact>]
+let ``BottomToTop display the list in reverse order`` () =
+    let model =
+        ListComponent.init [ "a"; "b"; "c" ] id 5
+        |> ListComponent.withDirection ListComponent.Direction.BottomToTop
+
+    Assert.Equal<string list>([ "  c"; "  b"; "> a" ], render 3 3 (ListComponent.view model))
 
 [<Fact>]
 let ``the checkbox glyph follows its state`` () =

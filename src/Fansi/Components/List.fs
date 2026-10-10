@@ -1,6 +1,5 @@
 namespace Fansi
 
-open System
 open Elmish
 open Fansi
 open Fansi.Core
@@ -14,6 +13,11 @@ module ListComponent =
         | Select
         | KeyInput of KeyEvent
 
+    [<RequireQualifiedAccess>]
+    type Direction =
+        | TopToBottom
+        | BottomToTop
+
     type Model<'item> =
         { Items: 'item list
           FocusItemIndex: int
@@ -24,7 +28,8 @@ module ListComponent =
           SelectedStyle: Style
           NormalStyle: Style
           FocusedStyle: Style
-          FocusedIndicator: string }
+          FocusedIndicator: string
+          Direction: Direction }
 
     let init (items: 'item list) (itemToString: 'item -> string) (viewportSize: int) =
         { Items = items
@@ -43,8 +48,19 @@ module ListComponent =
             { Style.Default with
                 FgColor = Color.Black
                 BgColor = Color.Cyan }
-          FocusedIndicator = "▸ " },
-        Cmd.none
+          FocusedIndicator = "> "
+          Direction = Direction.TopToBottom }
+
+    let withDirection direction model =
+        let focusIdx, offset =
+            match direction with
+            | Direction.TopToBottom -> 0, 0
+            | Direction.BottomToTop -> model.Items.Length - 1, model.Items.Length - model.ViewportSize
+
+        { model with
+            Direction = direction
+            FocusItemIndex = max 0 focusIdx
+            ViewportOffset = max 0 offset }
 
     let rec update msg model =
         match msg with
@@ -94,13 +110,24 @@ module ListComponent =
             | _ -> model, Cmd.none
 
     let selectedItem model =
-        model.SelectedItemIndex |> Option.map (fun idx -> model.Items[idx])
+        model.SelectedItemIndex
+        |> Option.map (fun idx ->
+            match model.Direction with
+            | Direction.TopToBottom -> model.Items[idx]
+            | Direction.BottomToTop -> model.Items[model.Items.Length - 1 - idx])
 
     let view (model: Model<'item>) : Node =
         let visibleItems =
-            model.Items
-            |> List.skip model.ViewportOffset
-            |> List.truncate model.ViewportSize
+            match model.Direction with
+            | Direction.TopToBottom ->
+                model.Items
+                |> List.skip model.ViewportOffset
+                |> List.truncate model.ViewportSize
+            | Direction.BottomToTop ->
+                model.Items
+                |> List.rev
+                |> List.skip model.ViewportOffset
+                |> List.truncate model.ViewportSize
 
         let rows =
             visibleItems

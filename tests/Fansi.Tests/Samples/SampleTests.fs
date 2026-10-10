@@ -190,13 +190,14 @@ let ``a task added past the visible rows scrolls into view`` () =
 
     let model = dashboard () |> focusInput |> add "a" |> add "b" |> add "c"
     let lines = render 80 24 (Dashboard.view model)
-    Assert.Contains(lines, fun line -> line.Contains "▸ c")
+    Assert.Contains(lines, fun line -> line.Contains "> c")
     Assert.Equal(model.Tasks.Items.Length - 1, model.Tasks.FocusItemIndex)
 
 [<Fact>]
 let ``the seeded tasks fit on one row each at 80 columns`` () =
-    let lines = render 80 24 (Dashboard.view (dashboard ())) |> List.toArray
-    let first = lines |> Array.findIndex (fun line -> line.Contains "▸ layout sample")
+    let model = dashboard()
+    let lines = render 80 24 (Dashboard.view model) |> List.toArray
+    let first = lines |> Array.findIndex (fun line -> line.Contains "> layout sample")
     Assert.Contains("dashboard", lines[first + 1])
     Assert.Contains("dead helpers", lines[first + 2])
 

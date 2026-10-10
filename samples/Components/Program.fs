@@ -56,7 +56,7 @@ let init () =
     let name, _ = TextInputComponent.init ()
     let secret, _ = TextInputComponent.init ()
 
-    let fruits, _ =
+    let fruits =
         ListComponent.init [ "apple"; "banana"; "cherry"; "damson"; "elderberry"; "fig" ] id 3
 
     // Loaded through init, not setText: empty content counts as the bottom, and
