@@ -31,8 +31,7 @@ let init () =
     let spinner, _ = SpinnerComponent.init SpinnerComponent.Dots 80<ms> "running"
     let input, _ = TextInputComponent.init ()
 
-    let tasks =
-        ListComponent.init [ "layout sample"; "dashboard"; "dead helpers" ] id 5
+    let tasks = ListComponent.init [ "layout sample"; "dashboard"; "dead helpers" ] id 5
 
     let keepText, _ = CheckboxComponent.init "keep the text after adding"
 

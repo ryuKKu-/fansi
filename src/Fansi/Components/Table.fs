@@ -206,7 +206,9 @@ module TableComponent =
                     | Some node -> Runs.ofNode style node |> Runs.truncate width
                     | None -> []
 
-                (if i > 0 then space style 1 else []) @ cell @ space style (width - Runs.width cell))
+                (if i > 0 then space style 1 else [])
+                @ cell
+                @ space style (width - Runs.width cell))
             |> List.concat
 
         let runs =
@@ -259,8 +261,7 @@ module TableComponent =
             match borderChars m with
             | None -> Ui.col (header :: shown @ List.replicate missing (Ui.text ""))
             | Some c ->
-                let blanks =
-                    List.replicate missing (line (rowRuns m widths m.NormalStyle []))
+                let blanks = List.replicate missing (line (rowRuns m widths m.NormalStyle []))
 
                 let left, right = tees m.Border
                 let edgeLine = edge m widths c

@@ -195,7 +195,7 @@ let ``a task added past the visible rows scrolls into view`` () =
 
 [<Fact>]
 let ``the seeded tasks fit on one row each at 80 columns`` () =
-    let model = dashboard()
+    let model = dashboard ()
     let lines = render 80 24 (Dashboard.view model) |> List.toArray
     let first = lines |> Array.findIndex (fun line -> line.Contains "> layout sample")
     Assert.Contains("dashboard", lines[first + 1])
