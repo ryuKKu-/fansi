@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Fansi</RootNamespace>
     <PackageId>Fansi.Tui</PackageId>
-    <Version>0.0.0</Version> <!-- x-release-please-version -->
+    <Version>0.1.0</Version> <!-- x-release-please-version -->
     <Authors>Luc Raymond</Authors>
     <Description>Terminal user interfaces in F#, with the Elm architecture.</Description>
     <PackageTags>tui terminal console elmish fsharp</PackageTags>
