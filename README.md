@@ -1,24 +1,37 @@
 # Fansi
 
-Terminal user interfaces in F#, with the Elm architecture.
+**Terminal apps in F#, built the Elm way.**
 
-You write a model, an `update` and a `view`. Fansi puts the terminal in raw
-mode. It turns keys, mouse, paste and resize into messages. It lays out the
-view with integer constraints. It repaints only the cells that changed.
+[![NuGet](https://img.shields.io/nuget/v/Fansi.Tui.svg)](https://www.nuget.org/packages/Fansi.Tui)
+[![CI](https://github.com/ryuKKu-/fansi/actions/workflows/ci.yml/badge.svg)](https://github.com/ryuKKu-/fansi/actions/workflows/ci.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](https://github.com/ryuKKu-/fansi/blob/master/LICENSE)
 
-## Install
+Fansi is a library for building full-screen terminal apps in F#. It follows the Elm architecture through
+[Elmish](https://elmish.github.io/elmish/): your app is a model, an `update` function that changes it, and a `view`
+function that describes the screen. Fansi does the rest: it reads the keyboard and the mouse, lays out the view, and
+redraws only the parts of the screen that changed.
+
+- **Plain F# views.** A view is a tree of rows, columns and text. Sizes, borders, padding and colours are small
+  functions you pipe together.
+- **Exact layout.** A constraint solver splits space in whole terminal cells. Wide characters such as CJK and emoji
+  take two cells and are never cut in half.
+- **Ready-made components.** Text input, list, table, viewport, help line, progress bar, spinner, timer and more,
+  each one a small Elm program you can restyle.
+- **Real terminal input.** Keys with modifiers, mouse, bracketed paste, resize and focus events, on Unix and
+  Windows.
+- **Safe exit.** The terminal goes back to normal however the program ends, even on a crash.
+
+### Requirements
+
+[.NET 10](https://dotnet.microsoft.com/download).
+
+## Getting started
 
 ```shell
 dotnet add package Fansi.Tui
 ```
 
-The package is `Fansi.Tui`, and the namespace is `Fansi`:
-
-```fsharp
-open Fansi
-```
-
-## A counter
+A complete counter. Up and Down change the number, and Esc quits:
 
 ```fsharp
 open Elmish
@@ -49,188 +62,32 @@ let main _ =
     0
 ```
 
-Open `Elmish` before `Fansi`. Fansi adds to the `Cmd` and `Sub` modules of
-Elmish. Where both define the same name, the module you open last wins.
+Open `Elmish` before `Fansi`. Fansi adds functions to the `Cmd` and `Sub` modules of Elmish, and when both define a
+name, the module you open last wins.
 
-## Messages
+## See it run
 
-`update` receives a `FansiMsg<'msg>` and returns a plain `Cmd<'msg>`:
+The repository has five samples. Clone it and run one:
 
-| Case | When |
-|---|---|
-| `KeyPress of KeyEvent` | a key, with `Ctrl`, `Alt` and `Shift` flags |
-| `Mouse of MouseEvent` | a click, a scroll or a move, once `withMouseEnabled` is on |
-| `Paste of string` | a whole bracketed paste, as one message |
-| `Resize of width * height` | the terminal changed size |
-| `FocusChanged of bool` | the terminal window gained or lost focus |
-| `App of 'msg` | your own messages, from commands and subscriptions |
-
-Your commands come back as `App`, so a command from a child component needs
-only `Cmd.map`. `Cmd.quit` stops the program. `Cmd.after 500<ms> msg` sends a
-message one time, after the delay. Ctrl+C quits the program unless you use
-`withoutQuitOnCtrlC`.
-
-## Views
-
-Constructors return a `Node`. Every modifier is `Node -> Node`, so you can
-change a node that a component already built:
-
-```fsharp
-TimerComponent.view model.Timer |> Ui.border Single |> Ui.fill 1
-```
-
-- Constructors: `Ui.text`, `Ui.line`, `Ui.row`, `Ui.col`, `Ui.empty`.
-- Size along the parent's axis: `Ui.len`, `Ui.pct`, `Ui.ratio`, `Ui.fill`,
-  `Ui.minLen`, `Ui.maxLen`, `Ui.auto`. The sizes always add up to the
-  size of the parent. No cell is lost to rounding.
-- Box: `Ui.border`, `Ui.title`, `Ui.titleWith`, `Ui.pad`, `Ui.padX`, `Ui.padY`, `Ui.margin`,
-  `Ui.justify`, `Ui.align`.
-- Style: `Ui.fg`, `Ui.bg`, `Ui.bold`, `Ui.italic`, `Ui.underline`,
-  `Ui.strike`, `Ui.style`.
-
-`Ui.line` draws its children as one run of text, each part in its own style:
-
-```fsharp
-Ui.line [ Ui.text "Status: "; Ui.text "ok" |> Ui.bold |> Ui.fg Color.Green ]
-```
-
-Inside a line, only text and style count. A row or column in a line gives its
-text. Fansi ignores its border and padding. Fansi measures text in terminal
-cells, so CJK characters and emoji use two cells.
-
-## Focus
-
-A `Focus` ring records which part of the screen has focus. Components do not
-store it. You pass it in:
-
-```fsharp
-Focus = Focus.ofList [ Name; Password; Submit ]
-
-| KeyPress k when k.Key = Key.Tab -> { model with Focus = Focus.next model.Focus }, Cmd.none
-
-TextInputComponent.view (Focus.isFocused Name model.Focus) model.Name
-```
-
-## Subscriptions
-
-Components that tick, such as the timer, the spinner and the text cursor,
-have their own id. Their subscriptions never collide, so `Sub.map` needs no
-key:
-
-```fsharp
-let subscribe model =
-    Sub.batch
-        [ TimerComponent.subscribe model.Timer |> Sub.map TimerMsg
-          TextInputComponent.subscribe (Focus.isFocused Name model.Focus) model.Name
-          |> Sub.map NameMsg ]
-
-FansiProgram.mkProgram init update view
-|> FansiProgram.withSubscription subscribe
-|> FansiProgram.run
-```
-
-For a timer of your own, `Sub.timer [ "clock" ] 1000<ms> Tick`.
-
-## Components
-
-| Module | What it does |
-|---|---|
-| `TextInputComponent` | single-line input: scrolling, password echo, placeholder, undo, validation, suggestions |
-| `ListComponent` | a scrolling list with a marker and a selection |
-| `ViewportComponent` | a box of rich text that scrolls, wraps and follows a growing log |
-| `TableComponent` | rows of styled cells under a header, with a cursor row |
-| `HelpComponent` | a key help line, or a full grid, from `Keymap` bindings |
-| `CheckboxComponent` | a toggle with a label |
-| `ButtonComponent` | a label in a box |
-| `TimerComponent` | a countdown |
-| `SpinnerComponent` | an animated spinner |
-| `ProgressBarComponent` | a bar filled in proportion |
-
-The table draws an outer border and a line under the header. The default
-style is `Single`. To change it, set `Border` (any `BorderStyle`, or `NoBorder`
-for none) and `BorderColor`.
-
-A component is a model, an `update` and a `view`. If it ticks, it also has a
-`subscribe`. The parent owns the model and sends messages to it.
-`TextInputComponent` takes keys as `KeyInput`, pastes as `Pasted`, and changes
-from code as `SetValue`.
-
-`ViewportComponent` shows `Height` rows of its content, wrapped to `Width`
-cells. The content has one node for each paragraph, so every style works:
-
-```fsharp
-let help, _ =
-    ViewportComponent.init 40 10 [ Ui.text "Keys" |> Ui.bold; Ui.text "Up and Down scroll." ]
-```
-
-`setContent` and `setText` replace the content. `setText` makes one paragraph
-for each line and drops one trailing newline, so `"a\nb\n"` gives two
-paragraphs. A viewport at the bottom stays at the bottom, so a log follows new
-lines. Content that fits the box is both at the top and at the bottom. New
-content or a smaller size then shows the end. To show a document from its
-start, load it through `init`. Send `Top` after `setContent`, `setText` or
-`setSize`. Call `setSize` when the terminal is resized.
-
-Set `Width` and `Height` to the inside size of the box that holds the
-viewport. A narrower or shorter box wraps or cuts the rows again. The viewport
-ignores the size, border and padding of a paragraph. The background of a
-paragraph colours only its text, not the whole row. The viewport drops tabs and
-other control characters, so expand tabs before you pass the text in.
-
-## Samples
-
-- `samples/Layout`: one page for each layout idea. Left and Right change the
-  page.
-- `samples/Dashboard`: three panels, real components and a focus ring. Its
-  README has the dashboard checklist.
-- `samples/Components`: every component on one screen, with a help box that
-  scrolls. Its README has the component checklist.
-- `samples/Table`: a table of processes with a help line. Its README has the
-  table checklist.
-- `samples/Interactive`: raw input, one event at a time. Its README has the
-  terminal checklist.
-
-```
+```shell
 dotnet run --project samples/Dashboard
 ```
 
-## Project layout
-
-The library lives in `src/Fansi`, one folder per concern:
-
-| Folder | What it holds |
+| Sample | What it shows |
 |---|---|
-| `Core` | geometry, styles, props and the node tree |
-| `Text` | display width and styled runs of text |
-| `Ui.fs` | the functions that build a view |
-| `Layout` | the constraint solver and the layout pass |
-| `Rendering` | the cell buffer, painting and the diffing renderer |
-| `Terminal` | input events, the input parser and raw mode |
-| `Program` | the Elm loop, subscriptions, keymaps, focus and the cursor |
-| `Components` | ready-made components |
+| `samples/Layout` | one page for each layout idea. Left and Right change the page |
+| `samples/Dashboard` | three panels, real components and a focus ring |
+| `samples/Components` | every component on one screen |
+| `samples/Table` | a table of processes with a help line |
+| `samples/Interactive` | raw input, one event at a time |
 
-`tests/Fansi.Tests` uses the same folders, plus `Samples` for the sample tests.
+## Learn more
 
-## Building
-
-```
-dotnet tool restore
-dotnet paket restore
-dotnet build
-dotnet test tests/Fansi.Tests
-dotnet fantomas src tests samples
-```
-
-The build has no warnings. Keep it that way.
-
-## Contributing
-
-Commit messages are one line in the
-[conventional commits](https://www.conventionalcommits.org) style:
-`feat: ...`, `fix: ...`, `perf: ...`, `docs: ...`, `refactor: ...`,
-`test: ...`, `chore: ...`. The release tool uses them to make the releases and
-the changelog. `feat`, `fix` and `perf` make a release. The other types do
-not.
+- [Architecture](https://github.com/ryuKKu/fansi/blob/master/docs/architecture.md): how Fansi works, from the Elm
+  loop and input parsing to layout, painting and rendering.
+- [Component guide](https://github.com/ryuKKu-/fansi/blob/master/docs/components.md): the ten ready-made components,
+  with an example for each.
+- [Contributing](https://github.com/ryuKKu-/fansi/blob/master/CONTRIBUTING.md): build, test and send a change.
 
 ## Licence
 
